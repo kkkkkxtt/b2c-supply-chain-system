@@ -32,6 +32,7 @@ export async function updateShipmentLocationTransaction(
 ): Promise<Hex> {
   // --- 1. GENERATE DATA HASH ---
   const dataHashInput = JSON.stringify({
+<<<<<<< HEAD
     id: shipmentId,
     location: newLocation,
     updater: userId,
@@ -40,12 +41,26 @@ export async function updateShipmentLocationTransaction(
     .createHash('sha256')
     .update(dataHashInput)
     .digest('hex')}` as Hex;
+=======
+  orderId,
+  shipmentId,
+  location: newLocation,
+  updater: userId,
+  updatedAt: new Date().toISOString(),
+  });
+
+  const dataHash = `0x${crypto.createHash('sha256').update(dataHashInput).digest('hex')}` as Hex;
+>>>>>>> seller-buyer-improvement
 
   // --- 2. RECORD ON BLOCKCHAIN ---
   let txHash: Hex;
   try {
     txHash = await recordEventOnChain(
+<<<<<<< HEAD
       shipmentId,
+=======
+      orderId,
+>>>>>>> seller-buyer-improvement
       EVENT_STATUS_UPDATE,
       dataHash
     );

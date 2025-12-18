@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // /lib/db/items.ts (Server-side PostgreSQL interaction)
 
 import { query } from '@/lib/db/client';
@@ -11,12 +12,42 @@ export async function getItemsBySeller(sellerId: string): Promise<Item[]> {
       sellerId,
     ]);
     return result.rows as Item[];
+=======
+// /lib/db/items.ts
+import { query } from '@/lib/db/client';
+import { Item } from '@/types/item';
+import { recordEventOnChain } from '@/lib/blockchain';
+import { Hex } from 'viem';
+import crypto from 'crypto';
+
+const EVENT_ITEM_METADATA_HASHED = 4;
+
+// normalize numeric fields coming from Postgres (NUMERIC often returns string)
+function normalizeItem(row: any): Item {
+  return {
+    ...row,
+    price: Number(row.price),
+    stock: Number(row.stock),
+  } as Item;
+}
+
+// Seller: only own items
+export async function getItemsBySeller(sellerId: string): Promise<Item[]> {
+  console.log(`[DB] Fetching items for seller: ${sellerId}`);
+  try {
+    const result = await query(
+      'SELECT * FROM items WHERE seller_id = $1 ORDER BY created_at DESC',
+      [sellerId]
+    );
+    return result.rows.map(normalizeItem);
+>>>>>>> seller-buyer-improvement
   } catch (error) {
     console.error('Database query error (getItemsBySeller):', error);
     return [];
   }
 }
 
+<<<<<<< HEAD
 // === NEW: Reads all items (for the Buyer's view or Public catalog) ===
 export async function getAllItems(): Promise<Item[]> {
   console.log('[DB] Fetching ALL items for public view.');
@@ -26,13 +57,25 @@ export async function getAllItems(): Promise<Item[]> {
       []
     );
     return result.rows as Item[];
+=======
+// Buyer/Public: all items
+export async function getAllItems(): Promise<Item[]> {
+  console.log('[DB] Fetching ALL items for public view.');
+  try {
+    const result = await query('SELECT * FROM items ORDER BY created_at DESC', []);
+    return result.rows.map(normalizeItem);
+>>>>>>> seller-buyer-improvement
   } catch (error) {
     console.error('Database query error (getAllItems):', error);
     return [];
   }
 }
 
+<<<<<<< HEAD
 // === MODIFIED: Creates a new item (INSERT) ===
+=======
+// Create item (seller_id should already be forced in route.ts)
+>>>>>>> seller-buyer-improvement
 export async function createItem(item: Item): Promise<Item> {
   console.log(`[DB] Creating new item: ${item.item_name}`);
   try {
@@ -48,13 +91,19 @@ export async function createItem(item: Item): Promise<Item> {
       item.seller_id,
       item.item_name,
       item.description,
+<<<<<<< HEAD
       item.price,
       item.stock,
+=======
+      Number(item.price),
+      Number(item.stock),
+>>>>>>> seller-buyer-improvement
       item.image_url,
     ];
 
     const result = await query(sql, params);
 
+<<<<<<< HEAD
     // NOTE: After a successful DB insert, you would typically call a blockchain function:
     // await logItemCreationOnChain(item.id, hashOfItemMetadata);
 
@@ -62,15 +111,96 @@ export async function createItem(item: Item): Promise<Item> {
       throw new Error('Failed to create item, database returned no rows.');
     }
     return result.rows[0] as Item;
+=======
+    if (result.rows.length === 0) {
+      throw new Error('Failed to create item, database returned no rows.');
+    }
+
+    const createdItem = normalizeItem(result.rows[0]);
+
+    // On-chain proof (hash only)
+    try {
+      const itemPayload = {
+        itemId: createdItem.id,
+        sellerId: createdItem.seller_id,
+        name: createdItem.item_name,
+        description: createdItem.description,
+        price: createdItem.price,
+        stock: createdItem.stock,
+        imageUrl: createdItem.image_url,
+        createdAt: createdItem.created_at,
+      };
+
+      const hashHex = crypto
+        .createHash('sha256')
+        .update(JSON.stringify(itemPayload))
+        .digest('hex');
+
+      const dataHash = `0x${hashHex}` as Hex;
+
+      await recordEventOnChain(String(createdItem.id), EVENT_ITEM_METADATA_HASHED, dataHash);
+    } catch (e) {
+      console.error('[BC] Failed to record ITEM_METADATA_HASHED:', e);
+    }
+
+    return createdItem;
+>>>>>>> seller-buyer-improvement
   } catch (error) {
     console.error('Database query error (createItem):', error);
     throw error;
   }
 }
 
+<<<<<<< HEAD
 // === MODIFIED: Updates an existing item (UPDATE) ===
 export async function updateItem(item: Item): Promise<Item> {
   console.log(`[DB] Updating item: ${item.id}`);
+=======
+// ✅ Seller can update only own item
+export async function updateItemBySeller(item: Item, sellerId: string): Promise<Item> {
+  console.log(`[DB] Updating item: ${item.id} by seller ${sellerId}`);
+  try {
+    const sql = `
+      UPDATE items
+      SET
+        item_name = $1,
+        description = $2,
+        price = $3,
+        stock = $4,
+        image_url = $5
+      WHERE
+        id = $6 AND seller_id = $7
+      RETURNING *;
+    `;
+
+    const params = [
+      item.item_name,
+      item.description,
+      Number(item.price),
+      Number(item.stock),
+      item.image_url,
+      item.id,
+      sellerId,
+    ];
+
+    const result = await query(sql, params);
+
+    if (result.rows.length === 0) {
+      throw new Error('Not found or no permission to update this item.');
+    }
+
+    return normalizeItem(result.rows[0]);
+  } catch (error) {
+    console.error('Database query error (updateItemBySeller):', error);
+    throw error;
+  }
+}
+
+// (Optional) keep this only if ADMIN needs unrestricted update.
+// Otherwise, you can delete it to avoid accidental misuse.
+export async function updateItem(item: Item): Promise<Item> {
+  console.log(`[DB] Updating item (unrestricted): ${item.id}`);
+>>>>>>> seller-buyer-improvement
   try {
     const sql = `
       UPDATE items
@@ -87,20 +217,34 @@ export async function updateItem(item: Item): Promise<Item> {
     const params = [
       item.item_name,
       item.description,
+<<<<<<< HEAD
       item.price,
       item.stock,
       item.image_url,
       item.id, // WHERE clause parameter
+=======
+      Number(item.price),
+      Number(item.stock),
+      item.image_url,
+      item.id,
+>>>>>>> seller-buyer-improvement
     ];
 
     const result = await query(sql, params);
 
+<<<<<<< HEAD
     // NOTE: You might log a status update to the blockchain if the update is critical (e.g., stock running out).
 
     if (result.rows.length === 0) {
       throw new Error('Failed to update item, item ID not found.');
     }
     return result.rows[0] as Item;
+=======
+    if (result.rows.length === 0) {
+      throw new Error('Failed to update item, item ID not found.');
+    }
+    return normalizeItem(result.rows[0]);
+>>>>>>> seller-buyer-improvement
   } catch (error) {
     console.error('Database query error (updateItem):', error);
     throw error;

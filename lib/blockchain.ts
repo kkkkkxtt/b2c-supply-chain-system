@@ -29,13 +29,27 @@ const ORDER_TRACKER_ABI_PLACEHOLDER = [
     outputs: [],
     stateMutability: 'nonpayable',
   },
+<<<<<<< HEAD
+=======
+  {
+    type: 'function',
+    name: 'getEntityKey',
+    inputs: [{ name: 'uniqueId', type: 'string' }],
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'pure',
+  },
+>>>>>>> seller-buyer-improvement
 ] as const;
 
 import { getAddress } from 'viem';
 
 // --- CONFIGURATION ---
 // You MUST update this address after the initial deployment (see Step 2)
+<<<<<<< HEAD
 const CONTRACT_ADDRESS: Address = getAddress((process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as string) || '0x5fbdb2315678afecb367f032d93f642f64180aa3');
+=======
+const CONTRACT_ADDRESS: Address = getAddress('0x5fbdb2315678afecb367f032d93f642f64180aa3');
+>>>>>>> seller-buyer-improvement
 
 // Helper to ensure private key has 0x prefix
 const formatPrivateKey = (key: string | undefined): Hex => {
@@ -79,8 +93,14 @@ const ORDER_EVENT_ABI = [
     type: 'event',
     name: 'OrderEvent',
     inputs: [
+<<<<<<< HEAD
       { name: 'uniqueId', type: 'string', indexed: true },
       { name: 'eventType', type: 'uint8', indexed: true }, // EventType is uint8
+=======
+      { name: 'entityKey', type: 'bytes32', indexed: true },
+      { name: 'eventType', type: 'uint8', indexed: true },
+      { name: 'uniqueId', type: 'string', indexed: false },
+>>>>>>> seller-buyer-improvement
       { name: 'dataHash', type: 'bytes32', indexed: false },
       { name: 'sender', type: 'address', indexed: true },
       { name: 'timestamp', type: 'uint256', indexed: false },
@@ -147,6 +167,7 @@ export async function getBlockchainLedger(): Promise<BlockchainRecord[]> {
     });
     console.log(`[BC] Raw logs found: ${logs.length}`);
 
+<<<<<<< HEAD
     const mappedLogs = logs.map((log): BlockchainRecord => {
       const decoded = decodeEventLog({
         abi: ORDER_EVENT_ABI,
@@ -169,6 +190,35 @@ export async function getBlockchainLedger(): Promise<BlockchainRecord[]> {
         sender_address: decoded.args.sender,
       };
     });
+=======
+    const EVENT_NAME = {
+      0: 'ORDER_CREATED',
+      1: 'STATUS_UPDATE',
+      2: 'DELIVERY_CONFIRMED',
+      3: 'PAYMENT_RELEASED',
+      4: 'ITEM_METADATA_HASHED',
+      5: 'USER_IDENTITY_HASHED',
+      6: 'ESCROW_STATE_CHANGED',
+    } as const;
+
+
+    const mappedLogs = logs.map((log): BlockchainRecord => {
+    const decoded = decodeEventLog({
+      abi: ORDER_EVENT_ABI,
+      data: log.data,
+      topics: log.topics,
+    });
+
+    return {
+      tx_hash: log.transactionHash,
+      block_timestamp: Number(decoded.args.timestamp) * 1000,
+      event_type: EVENT_NAME[Number(decoded.args.eventType) as keyof typeof EVENT_NAME] ?? 'UNKNOWN',
+      data_hash: decoded.args.dataHash as Hex,
+      sender_address: decoded.args.sender,
+    };
+  });
+
+>>>>>>> seller-buyer-improvement
     
     console.log(`[BC] Fetched ${mappedLogs.length} logs.`);
     return mappedLogs;
