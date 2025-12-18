@@ -42,7 +42,7 @@ import { getAddress } from 'viem';
 
 // --- CONFIGURATION ---
 // You MUST update this address after the initial deployment (see Step 2)
-const CONTRACT_ADDRESS: Address = getAddress((process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as string) || '0x5fbdb2315678afecb367f032d93f642f64180aa3');
+const CONTRACT_ADDRESS: Address = getAddress('0x5fbdb2315678afecb367f032d93f642f64180aa3');
 
 // Helper to ensure private key has 0x prefix
 const formatPrivateKey = (key: string | undefined): Hex => {
