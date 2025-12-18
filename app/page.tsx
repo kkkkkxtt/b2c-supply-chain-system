@@ -65,31 +65,39 @@ export default function App() {
       const refreshed = await fetchUserById(currentUser.id);
       if (refreshed) {
         setCurrentUser(refreshed);
-        localStorage.setItem('session_user', JSON.stringify(refreshed));
       }
     }
   }, [currentUser?.id]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('session_user');
-    if (saved) {
-      const user = JSON.parse(saved);
-      fetchUserById(user.id).then((u) => {
-        if (u) {
-          setCurrentUser(u);
-          localStorage.setItem('session_user', JSON.stringify(u));
-          if (u.role === UserRole.BUYER) setPage('marketplace');
-          else if (u.role === UserRole.SELLER) setPage('orders');
-          else setPage('shipments');
-        } else {
-          localStorage.removeItem('session_user');
-          setCurrentUser(null);
-        }
-        setLoading(false);
+    (async () => {
+      setLoading(true);
+
+      // ✅ restore session from cookies
+      const meRes = await fetch('/api/auth/me', {
+        method: 'GET',
+        credentials: 'include',
       });
-    } else {
+
+      const meData = await meRes.json();
+      const user = meData.user as User | null;
+
+      if (user) {
+        // optional: re-fetch from DB wallet endpoint to get latest balance
+        const refreshed = await fetchUserById(user.id);
+        const finalUser = refreshed ?? user;
+
+        setCurrentUser(finalUser);
+
+        if (finalUser.role === UserRole.BUYER) setPage('marketplace');
+        else if (finalUser.role === UserRole.SELLER) setPage('orders');
+        else setPage('shipments');
+      } else {
+        setCurrentUser(null);
+      }
+
       setLoading(false);
-    }
+    })();
   }, []);
 
   // --- LOGIN HANDLER ---
@@ -98,28 +106,36 @@ export default function App() {
     setLoginError('');
     setLoading(true);
 
-    const response = await fetch('/api/auth', {
+    const response = await fetch('/api/auth/login', {
       method: 'POST',
+      credentials: 'include', // ✅ so cookies are stored
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: loginEmail, password: loginPassword }),
     });
 
     if (response.ok) {
-      const user = await response.json();
-      setCurrentUser(user);
-      localStorage.setItem('session_user', JSON.stringify(user));
-      if (user.role === UserRole.BUYER) setPage('marketplace');
-      else if (user.role === UserRole.SELLER) setPage('orders');
+      const data = await response.json(); // { user }
+      const user = data.user as User;
+
+      // optional: refresh full wallet info
+      const refreshed = await fetchUserById(user.id);
+      const finalUser = refreshed ?? user;
+
+      setCurrentUser(finalUser);
+
+      if (finalUser.role === UserRole.BUYER) setPage('marketplace');
+      else if (finalUser.role === UserRole.SELLER) setPage('orders');
       else setPage('shipments');
 
-      // CLEAR LOGIN FORM AFTER SUCCESSFUL LOGIN
       setLoginEmail('');
       setLoginPassword('');
     } else {
       setLoginError('Invalid email or password.');
     }
+
     setLoading(false);
   };
+
 
   // --- SIGN UP HANDLER ---
   const handleSignup = async (e: React.FormEvent) => {
@@ -152,32 +168,48 @@ export default function App() {
     const result = await response.json();
 
     if (response.ok) {
-      // Auto login after successful signup
-      setCurrentUser(result);
-      localStorage.setItem('session_user', JSON.stringify(result));
-      if (result.role === UserRole.BUYER) setPage('marketplace');
-      else if (result.role === UserRole.SELLER) setPage('orders');
+      // 1) After signup, immediately login to set cookies
+      await fetch('/api/auth/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: signupForm.email, password: signupForm.password }),
+      });
+
+      // 2) Restore user from cookie session
+      const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+      const meData = await meRes.json();
+      const user = meData.user as User;
+
+      setCurrentUser(user);
+
+      if (user.role === UserRole.BUYER) setPage('marketplace');
+      else if (user.role === UserRole.SELLER) setPage('orders');
       else setPage('shipments');
 
-      // CLEAR SIGNUP FORM AFTER SUCCESSFUL SIGNUP
       setSignupForm(initialSignupForm);
     } else {
       setLoginError(result.error || 'Registration failed.');
     }
+
     setLoading(false);
   };
 
   // --- LOGOUT HANDLER (MODIFIED) ---
-  const handleLogout = () => {
-    localStorage.removeItem('session_user');
-    setCurrentUser(null);
-    setPage('profile');
-    setAuthMode('login');
+  const handleLogout = async () => {
+  await fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'include',
+  });
 
-    // CLEAR LOGIN FORM STATE
-    setLoginEmail('');
-    setLoginPassword('');
-  };
+  setCurrentUser(null);
+  setPage('profile');
+  setAuthMode('login');
+
+  setLoginEmail('');
+  setLoginPassword('');
+};
+
 
   // --- Profile/Wallet Handlers (Unmodified) ---
 
@@ -194,7 +226,6 @@ export default function App() {
     if (response.ok) {
       const updatedUser = await response.json();
       setCurrentUser(updatedUser);
-      localStorage.setItem('session_user', JSON.stringify(updatedUser));
       setIsEditingProfile(false);
     } else {
       alert('Failed to save profile.');
@@ -226,7 +257,6 @@ export default function App() {
     if (response.ok) {
       const updatedUser = await response.json();
       setCurrentUser(updatedUser);
-      localStorage.setItem('session_user', JSON.stringify(updatedUser));
       setWalletAmount('');
     } else {
       const errorData = await response.json();

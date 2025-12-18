@@ -4,6 +4,9 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
+// ✅ add this line
+import { AuthProvider } from '@/components/AuthProvider';
+
 // 1. Preserve Font Definitions
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -29,10 +32,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       {/* 3. Preserve Font Variables and CSS Classes on the <body> tag */}
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        {/* ✅ Persist login session across reload */}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
