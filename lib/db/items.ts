@@ -1,18 +1,3 @@
-<<<<<<< HEAD
-// /lib/db/items.ts (Server-side PostgreSQL interaction)
-
-import { query } from '@/lib/db/client';
-import { Item } from '@/types/item';
-
-// Reads all items for a specific seller
-export async function getItemsBySeller(sellerId: string): Promise<Item[]> {
-  console.log(`[DB] Fetching items for seller: ${sellerId}`);
-  try {
-    const result = await query('SELECT * FROM items WHERE seller_id = $1', [
-      sellerId,
-    ]);
-    return result.rows as Item[];
-=======
 // /lib/db/items.ts
 import { query } from '@/lib/db/client';
 import { Item } from '@/types/item';
@@ -40,15 +25,13 @@ export async function getItemsBySeller(sellerId: string): Promise<Item[]> {
       [sellerId]
     );
     return result.rows.map(normalizeItem);
->>>>>>> seller-buyer-improvement
   } catch (error) {
     console.error('Database query error (getItemsBySeller):', error);
     return [];
   }
 }
 
-<<<<<<< HEAD
-// === NEW: Reads all items (for the Buyer's view or Public catalog) ===
+// Buyer/Public: all items
 export async function getAllItems(): Promise<Item[]> {
   console.log('[DB] Fetching ALL items for public view.');
   try {
@@ -56,26 +39,14 @@ export async function getAllItems(): Promise<Item[]> {
       'SELECT * FROM items ORDER BY created_at DESC',
       []
     );
-    return result.rows as Item[];
-=======
-// Buyer/Public: all items
-export async function getAllItems(): Promise<Item[]> {
-  console.log('[DB] Fetching ALL items for public view.');
-  try {
-    const result = await query('SELECT * FROM items ORDER BY created_at DESC', []);
     return result.rows.map(normalizeItem);
->>>>>>> seller-buyer-improvement
   } catch (error) {
     console.error('Database query error (getAllItems):', error);
     return [];
   }
 }
 
-<<<<<<< HEAD
-// === MODIFIED: Creates a new item (INSERT) ===
-=======
 // Create item (seller_id should already be forced in route.ts)
->>>>>>> seller-buyer-improvement
 export async function createItem(item: Item): Promise<Item> {
   console.log(`[DB] Creating new item: ${item.item_name}`);
   try {
@@ -91,27 +62,13 @@ export async function createItem(item: Item): Promise<Item> {
       item.seller_id,
       item.item_name,
       item.description,
-<<<<<<< HEAD
-      item.price,
-      item.stock,
-=======
       Number(item.price),
       Number(item.stock),
->>>>>>> seller-buyer-improvement
       item.image_url,
     ];
 
     const result = await query(sql, params);
 
-<<<<<<< HEAD
-    // NOTE: After a successful DB insert, you would typically call a blockchain function:
-    // await logItemCreationOnChain(item.id, hashOfItemMetadata);
-
-    if (result.rows.length === 0) {
-      throw new Error('Failed to create item, database returned no rows.');
-    }
-    return result.rows[0] as Item;
-=======
     if (result.rows.length === 0) {
       throw new Error('Failed to create item, database returned no rows.');
     }
@@ -138,26 +95,27 @@ export async function createItem(item: Item): Promise<Item> {
 
       const dataHash = `0x${hashHex}` as Hex;
 
-      await recordEventOnChain(String(createdItem.id), EVENT_ITEM_METADATA_HASHED, dataHash);
+      await recordEventOnChain(
+        String(createdItem.id),
+        EVENT_ITEM_METADATA_HASHED,
+        dataHash
+      );
     } catch (e) {
       console.error('[BC] Failed to record ITEM_METADATA_HASHED:', e);
     }
 
     return createdItem;
->>>>>>> seller-buyer-improvement
   } catch (error) {
     console.error('Database query error (createItem):', error);
     throw error;
   }
 }
 
-<<<<<<< HEAD
-// === MODIFIED: Updates an existing item (UPDATE) ===
-export async function updateItem(item: Item): Promise<Item> {
-  console.log(`[DB] Updating item: ${item.id}`);
-=======
 // ✅ Seller can update only own item
-export async function updateItemBySeller(item: Item, sellerId: string): Promise<Item> {
+export async function updateItemBySeller(
+  item: Item,
+  sellerId: string
+): Promise<Item> {
   console.log(`[DB] Updating item: ${item.id} by seller ${sellerId}`);
   try {
     const sql = `
@@ -200,7 +158,6 @@ export async function updateItemBySeller(item: Item, sellerId: string): Promise<
 // Otherwise, you can delete it to avoid accidental misuse.
 export async function updateItem(item: Item): Promise<Item> {
   console.log(`[DB] Updating item (unrestricted): ${item.id}`);
->>>>>>> seller-buyer-improvement
   try {
     const sql = `
       UPDATE items
@@ -217,34 +174,18 @@ export async function updateItem(item: Item): Promise<Item> {
     const params = [
       item.item_name,
       item.description,
-<<<<<<< HEAD
-      item.price,
-      item.stock,
-      item.image_url,
-      item.id, // WHERE clause parameter
-=======
       Number(item.price),
       Number(item.stock),
       item.image_url,
       item.id,
->>>>>>> seller-buyer-improvement
     ];
 
     const result = await query(sql, params);
 
-<<<<<<< HEAD
-    // NOTE: You might log a status update to the blockchain if the update is critical (e.g., stock running out).
-
-    if (result.rows.length === 0) {
-      throw new Error('Failed to update item, item ID not found.');
-    }
-    return result.rows[0] as Item;
-=======
     if (result.rows.length === 0) {
       throw new Error('Failed to update item, item ID not found.');
     }
     return normalizeItem(result.rows[0]);
->>>>>>> seller-buyer-improvement
   } catch (error) {
     console.error('Database query error (updateItem):', error);
     throw error;

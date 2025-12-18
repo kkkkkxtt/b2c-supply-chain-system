@@ -4,14 +4,11 @@ import { query } from '@/lib/db/client'; // PostgreSQL client connection
 import { User, UserRole } from '@/types/user';
 import bcrypt from 'bcrypt';
 import { QueryResult } from 'pg';
-<<<<<<< HEAD
-=======
 import { recordEventOnChain } from '@/lib/blockchain';
 import { Hex } from 'viem';
 import crypto from 'crypto';
 
 const EVENT_USER_IDENTITY_HASHED = 5;
->>>>>>> seller-buyer-improvement
 
 const SALT_ROUNDS = 10;
 
@@ -36,12 +33,7 @@ export async function login(
     if (!match) return null;
 
     const { password_hash, ...user } = userRow;
-<<<<<<< HEAD
-    return user as User;
-=======
     return { ...user, wallet_balance: Number(user.wallet_balance) } as User;
-
->>>>>>> seller-buyer-improvement
   } catch (error) {
     console.error('Database query error (login):', error);
     return null;
@@ -76,10 +68,7 @@ export async function registerUser(user: User): Promise<User> {
     const result: QueryResult = await query(text, values);
     const userRow = result.rows[0];
     const { password_hash, ...newUser } = userRow;
-<<<<<<< HEAD
-    return newUser as User;
-=======
-        // --- On-chain proof (hash only, no PII) ---
+    // --- On-chain proof (hash only, no PII) ---
     try {
       const identityPayload = {
         userId: newUser.id,
@@ -93,14 +82,20 @@ export async function registerUser(user: User): Promise<User> {
 
       const dataHash = `0x${hashHex}` as Hex;
 
-      await recordEventOnChain(newUser.id, EVENT_USER_IDENTITY_HASHED, dataHash);
+      await recordEventOnChain(
+        newUser.id,
+        EVENT_USER_IDENTITY_HASHED,
+        dataHash
+      );
     } catch (e) {
       console.error('[BC] Failed to record USER_IDENTITY_HASHED:', e);
       // Option A (recommended): do NOT block registration if blockchain fails
       // Option B (strict): throw new Error('Blockchain transaction failed.');
     }
-    return { ...newUser, wallet_balance: Number(newUser.wallet_balance) } as User;
->>>>>>> seller-buyer-improvement
+    return {
+      ...newUser,
+      wallet_balance: Number(newUser.wallet_balance),
+    } as User;
   } catch (error) {
     console.error('Database insertion error (registerUser):', error);
     throw new Error('Registration failed due to a database error.');

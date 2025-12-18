@@ -27,32 +27,26 @@ export async function createOrderTransaction(
   buyer: User,
   item: Item
 ): Promise<OrderCreationResult> {
-<<<<<<< HEAD
-  // Server-side validation
-  if (buyer.wallet_balance < item.price || item.stock <= 0) {
-    throw new Error(
-      'Pre-transaction validation failed: Insufficient funds or stock.'
-    );
-  }
-
-=======
-
   // ✅ normalize numeric values from DB (pg NUMERIC often returns string)
   const buyerBalance = Number(buyer.wallet_balance);
   const itemPrice = Number(item.price);
   const itemStock = Number(item.stock);
 
-  if (Number.isNaN(buyerBalance) || Number.isNaN(itemPrice) || Number.isNaN(itemStock)) {
+  if (
+    Number.isNaN(buyerBalance) ||
+    Number.isNaN(itemPrice) ||
+    Number.isNaN(itemStock)
+  ) {
     throw new Error('Invalid numeric data (wallet_balance/price/stock).');
   }
 
   // Server-side validation
   if (buyerBalance < itemPrice || itemStock <= 0) {
-    throw new Error('Pre-transaction validation failed: Insufficient funds or stock.');
+    throw new Error(
+      'Pre-transaction validation failed: Insufficient funds or stock.'
+    );
   }
 
-
->>>>>>> seller-buyer-improvement
   const orderId = `ord_${Date.now()}`;
   const shipmentId = `shp_${Date.now()}`;
   const currentTimestamp = new Date().toISOString();
@@ -62,11 +56,7 @@ export async function createOrderTransaction(
     buyer_id: buyer.id,
     item_id: item.id,
     quantity: 1,
-<<<<<<< HEAD
-    total_amount: item.price,
-=======
     total_amount: itemPrice,
->>>>>>> seller-buyer-improvement
     current_status: OrderStatus.PENDING,
     order_timestamp: currentTimestamp,
     blockchain_tx_hash: undefined,
@@ -78,11 +68,13 @@ export async function createOrderTransaction(
   const logisticsResult = await query(
     "SELECT id FROM users WHERE role = 'LOGISTICS' LIMIT 1"
   );
-  
+
   if (logisticsResult.rows.length === 0) {
-    throw new Error('No Logistics Provider available. Please create an account with the role "Logistics Provider".');
+    throw new Error(
+      'No Logistics Provider available. Please create an account with the role "Logistics Provider".'
+    );
   }
-  
+
   const logisticsId = logisticsResult.rows[0].id;
 
   const newShipment: Shipment = {
@@ -123,13 +115,6 @@ export async function createOrderTransaction(
 
   try {
     // A. Deduct buyer balance (Transfer to 'Escrow' - not explicitly modeled here, just deduction)
-<<<<<<< HEAD
-    await query(
-      'UPDATE users SET wallet_balance = wallet_balance - $1 WHERE id = $2',
-      [newOrder.total_amount, buyer.id]
-    );
-
-=======
     const deduct = await query(
       'UPDATE users SET wallet_balance = wallet_balance - $1 WHERE id = $2 AND wallet_balance >= $1',
       [itemPrice, buyer.id]
@@ -139,8 +124,6 @@ export async function createOrderTransaction(
       throw new Error('Insufficient funds (DB check).');
     }
 
-
->>>>>>> seller-buyer-improvement
     // B. Deduct item stock
     await query('UPDATE items SET stock = stock - 1 WHERE id = $1', [item.id]);
 
