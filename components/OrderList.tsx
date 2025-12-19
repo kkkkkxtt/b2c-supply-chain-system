@@ -20,9 +20,14 @@ import {
 interface OrderListProps {
   user: User;
   refreshUser?: () => void;
+  onNavigate?: (page: string, params?: Record<string, string>) => void;
 }
 
-export const OrderList: React.FC<OrderListProps> = ({ user, refreshUser }) => {
+export const OrderList: React.FC<OrderListProps> = ({
+  user,
+  refreshUser,
+  onNavigate,
+}) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,11 +227,14 @@ export const OrderList: React.FC<OrderListProps> = ({ user, refreshUser }) => {
                             <h3 className="font-bold text-slate-900">
                               Order #{order.order_id}
                             </h3>
-                          {order.item_name && (
-                            <p className="text-xs text-slate-500">
-                              Item: <span className="font-medium">{order.item_name}</span>
-                            </p>
-                          )}
+                            {order.item_name && (
+                              <p className="text-xs text-slate-500">
+                                Item:{' '}
+                                <span className="font-medium">
+                                  {order.item_name}
+                                </span>
+                              </p>
+                            )}
                             <p className="text-sm text-slate-500">
                               {new Date(
                                 order.order_timestamp
@@ -369,13 +377,36 @@ export const OrderList: React.FC<OrderListProps> = ({ user, refreshUser }) => {
 
                         {/* View Hash */}
                         {order.blockchain_tx_hash && (
-                          <a
-                            href="#"
-                            className="flex items-center text-xs text-blue-500 hover:text-blue-700 self-center"
+                          <button
+                            onClick={() => {
+                              if (onNavigate && order.blockchain_tx_hash) {
+                                // Navigate to blockchain viewer with tx hash parameter
+                                onNavigate('blockchain-viewer', {
+                                  txHash: order.blockchain_tx_hash,
+                                });
+                              } else if (order.blockchain_tx_hash) {
+                                // Fallback: use sessionStorage and navigate
+                                if (typeof window !== 'undefined') {
+                                  sessionStorage.setItem(
+                                    'searchTxHash',
+                                    order.blockchain_tx_hash
+                                  );
+                                  // Try to trigger navigation via custom event
+                                  window.dispatchEvent(
+                                    new CustomEvent('navigateToBlockchain', {
+                                      detail: {
+                                        txHash: order.blockchain_tx_hash,
+                                      },
+                                    })
+                                  );
+                                }
+                              }
+                            }}
+                            className="flex items-center text-xs text-blue-500 hover:text-blue-700 self-center cursor-pointer"
                           >
                             <ExternalLink size={12} className="mr-1" /> View on
-                            Etherscan (Sim)
-                          </a>
+                            Blockchain Hash Viewer
+                          </button>
                         )}
                       </div>
                     </div>

@@ -551,7 +551,17 @@ export default function App() {
         <Inventory user={currentUser} />
       )}
       {page === 'orders' && (
-        <OrderList user={currentUser} refreshUser={refreshUser} />
+        <OrderList 
+          user={currentUser} 
+          refreshUser={refreshUser}
+          onNavigate={(pageName, params) => {
+            setPage(pageName);
+            // Store params in sessionStorage for BlockchainHashViewer to pick up
+            if (params?.txHash) {
+              sessionStorage.setItem('searchTxHash', params.txHash);
+            }
+          }}
+        />
       )}
       {page === 'shipments' && currentUser.role === UserRole.LOGISTICS && (
         <ShipmentManager user={currentUser} />

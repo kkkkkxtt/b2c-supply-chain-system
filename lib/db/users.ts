@@ -10,6 +10,7 @@ import { Hex } from 'viem';
 import crypto from 'crypto';
 
 const EVENT_USER_IDENTITY_HASHED = 5;
+const EVENT_USER_PROFILE_UPDATED = 8; // New event type for profile updates
 
 const SALT_ROUNDS = 10;
 
@@ -201,10 +202,64 @@ export async function updateUser(user: Partial<User>): Promise<User | null> {
     if (result.rows.length === 0) return null;
 
     const updatedUser = result.rows[0];
-    return {
+    const finalUser = {
       ...updatedUser,
       wallet_balance: Number(updatedUser.wallet_balance),
     } as User;
+
+    // Record profile update on blockchain
+    try {
+      const profileUpdatePayload = {
+        userId: finalUser.id,
+        role: finalUser.role,
+        walletAddress: finalUser.wallet_address,
+        name: finalUser.name,
+        email: finalUser.email,
+        contactNumber: finalUser.contact_number,
+        address: finalUser.address,
+        updatedAt: finalUser.updated_at,
+      };
+
+      const hashHex = crypto
+        .createHash('sha256')
+        .update(JSON.stringify(profileUpdatePayload))
+        .digest('hex');
+
+      const dataHash = `0x${hashHex}` as Hex;
+
+      const txHash = await recordEventOnChain(
+        finalUser.id,
+        EVENT_USER_PROFILE_UPDATED,
+        dataHash,
+        finalUser.wallet_address
+      );
+
+      // Store proof in database
+      await recordBlockchainProof(
+        finalUser.id,
+        'USER',
+        EVENT_USER_PROFILE_UPDATED,
+        dataHash,
+        txHash,
+        finalUser.wallet_address,
+        {
+          userId: finalUser.id,
+          role: finalUser.role,
+          walletAddress: finalUser.wallet_address,
+          name: finalUser.name,
+          email: finalUser.email,
+          contactNumber: finalUser.contact_number,
+          address: finalUser.address,
+          updatedAt: finalUser.updated_at,
+        }
+      );
+      console.log(`[DB] User profile update proof recorded for ${finalUser.id}`);
+    } catch (e) {
+      console.error('[BC] Failed to record USER_PROFILE_UPDATED:', e);
+      // Don't block update if blockchain fails
+    }
+
+    return finalUser;
   } catch (error) {
     console.error('Database query error (updateUser):', error);
     return null;

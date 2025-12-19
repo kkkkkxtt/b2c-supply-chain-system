@@ -2,10 +2,12 @@
 import { query } from '@/lib/db/client';
 import { Item } from '@/types/item';
 import { recordEventOnChain } from '@/lib/blockchain';
+import { recordBlockchainProof } from '@/lib/db/blockchain-proofs';
 import { Hex } from 'viem';
 import crypto from 'crypto';
 
 const EVENT_ITEM_METADATA_HASHED = 4;
+const EVENT_ITEM_UPDATED = 7; // New event type for item updates
 
 // normalize numeric fields coming from Postgres (NUMERIC often returns string)
 function normalizeItem(row: any): Item {
@@ -147,7 +149,61 @@ export async function updateItemBySeller(
       throw new Error('Not found or no permission to update this item.');
     }
 
-    return normalizeItem(result.rows[0]);
+    const updatedItem = normalizeItem(result.rows[0]);
+
+    // Record item update on blockchain
+    try {
+      const updatePayload = {
+        itemId: updatedItem.id,
+        sellerId: updatedItem.seller_id,
+        sellerWallet: updatedItem.seller_wallet_address,
+        name: updatedItem.item_name,
+        description: updatedItem.description,
+        price: updatedItem.price,
+        stock: updatedItem.stock,
+        updatedAt: updatedItem.updated_at,
+      };
+
+      const hashHex = crypto
+        .createHash('sha256')
+        .update(JSON.stringify(updatePayload))
+        .digest('hex');
+
+      const dataHash = `0x${hashHex}` as Hex;
+
+      const txHash = await recordEventOnChain(
+        String(updatedItem.id),
+        EVENT_ITEM_UPDATED,
+        dataHash,
+        updatedItem.seller_wallet_address
+      );
+
+      // Store proof in database
+      await recordBlockchainProof(
+        updatedItem.id,
+        'ITEM',
+        EVENT_ITEM_UPDATED,
+        dataHash,
+        txHash,
+        updatedItem.seller_wallet_address,
+        {
+          itemId: updatedItem.id,
+          sellerId: updatedItem.seller_id,
+          sellerWallet: updatedItem.seller_wallet_address,
+          name: updatedItem.item_name,
+          description: updatedItem.description,
+          price: updatedItem.price,
+          stock: updatedItem.stock,
+          updatedAt: updatedItem.updated_at,
+        }
+      );
+      console.log(`[DB] Item update proof recorded for ${updatedItem.id}`);
+    } catch (e) {
+      console.error('[BC] Failed to record ITEM_UPDATED:', e);
+      // Don't block update if blockchain fails
+    }
+
+    return updatedItem;
   } catch (error) {
     console.error('Database query error (updateItemBySeller):', error);
     throw error;

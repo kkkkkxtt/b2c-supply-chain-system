@@ -2,7 +2,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search,
   Loader2,
@@ -37,6 +37,8 @@ const EVENT_TYPE_MAP: Record<number, string> = {
   3: 'PAYMENT_RELEASED',
   4: 'ITEM_METADATA_HASHED',
   5: 'USER_IDENTITY_HASHED',
+  7: 'ITEM_UPDATED',
+  8: 'USER_PROFILE_UPDATED',
 };
 
 const ENTITY_TYPE_ICONS: Record<string, any> = {
@@ -58,10 +60,7 @@ export const BlockchainHashViewer: React.FC = () => {
 
   const PROOFS_PER_PAGE = 2;
 
-  // Remove auto-load - only show results when user searches
-  // Dashboard stays clean until search is performed
-
-  const handleSearch = async (e?: React.FormEvent) => {
+  const handleSearch = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
     setCurrentPage(1);
@@ -127,7 +126,20 @@ export const BlockchainHashViewer: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchTerm, selectedEventType]);
+
+  // Check for txHash in sessionStorage on mount (from "View on Blockchain Hash Viewer" link)
+  useEffect(() => {
+    const storedTxHash = sessionStorage.getItem('searchTxHash');
+    if (storedTxHash) {
+      setSearchTerm(storedTxHash);
+      sessionStorage.removeItem('searchTxHash'); // Clear after reading
+      // Auto-search after a brief delay to ensure component is ready
+      setTimeout(() => {
+        handleSearch();
+      }, 100);
+    }
+  }, [handleSearch]); // Include handleSearch in dependencies
 
   const clearResults = () => {
     setSearched(false);

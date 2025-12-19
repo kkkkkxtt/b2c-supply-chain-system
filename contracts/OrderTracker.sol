@@ -16,7 +16,9 @@ contract OrderTracker {
         PAYMENT_RELEASED,      // 3
         ITEM_METADATA_HASHED,  // 4 (proposal: hash of item metadata)
         USER_IDENTITY_HASHED,  // 5 (proposal: hash of buyer/seller identities)
-        ESCROW_STATE_CHANGED   // 6 (proposal: escrow state changes)
+        ESCROW_STATE_CHANGED,  // 6 (proposal: escrow state changes)
+        ITEM_UPDATED,          // 7 (item information edited)
+        USER_PROFILE_UPDATED   // 8 (user profile information edited)
     }
 
     struct LatestProof {
