@@ -5,6 +5,9 @@
 -- Purpose: Complete schema with wallet_address support, timestamps, and blockchain proofs
 -- =============================================================================
 
+--run command before running the scripts: psql -U postgres -c "CREATE DATABASE \"supply-chain-test\" OWNER spc_user;"
+--get into database: psql -U spc_user -d "supply-chain-test"
+
 -- 1. Create User Role (if not exists)
 DO
 $do$
@@ -18,14 +21,15 @@ END
 $do$;
 
 -- 2. Create Database (Note: This may need to be run separately as superuser)
+-- Use a DO block to prevent error if DB exists, then create with spc_user as owner
+-- Note: Re-run this part as superuser if you dropped the DB
 -- CREATE DATABASE "supply-chain-test" OWNER spc_user;
 
 -- 3. Connect to the test database (Run this manually in psql)
--- \c supply-chain-test;
+ \c "supply-chain-test";
 
 -- 4. Ensure user has proper permissions
-ALTER ROLE spc_user WITH CREATEDB;
--- Grant privileges will be done after connecting to database
+ALTER ROLE spc_user WITH CREATEROLE CREATEDB;
 
 -- 5. Create ENUM types
 DO $$ BEGIN
@@ -40,6 +44,10 @@ EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
+-- Change the owner of types so spc_user can use them freely
+ALTER TYPE user_role OWNER TO spc_user;
+ALTER TYPE order_status OWNER TO spc_user;
+
 -- =============================================================================
 -- USERS TABLE
 -- Stores user profile and blockchain wallet information
@@ -50,13 +58,16 @@ CREATE TABLE IF NOT EXISTS users (
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    wallet_address VARCHAR(42) UNIQUE NOT NULL,  -- Ethereum address (0x + 40 hex chars)
+    wallet_address VARCHAR(42) UNIQUE,  -- Removed NOT NULL to prevent crashes if not provided
     wallet_balance NUMERIC(20, 2) DEFAULT 0.00,
     contact_number VARCHAR(20),
     address TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Transfer ownership of table to spc_user
+ALTER TABLE users OWNER TO spc_user;
 
 -- Create index on email for faster login queries
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -70,7 +81,7 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE TABLE IF NOT EXISTS items (
     id VARCHAR(255) PRIMARY KEY,
     seller_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    seller_wallet_address VARCHAR(42) NOT NULL,  -- Cached seller wallet for blockchain proof
+    seller_wallet_address VARCHAR(42),  -- Removed NOT NULL for easier system testing
     item_name VARCHAR(255) NOT NULL,
     description TEXT,
     price NUMERIC(12, 2) NOT NULL,
@@ -78,6 +89,9 @@ CREATE TABLE IF NOT EXISTS items (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Transfer ownership of table to spc_user
+ALTER TABLE items OWNER TO spc_user;
 
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_items_seller_id ON items(seller_id);
@@ -91,7 +105,7 @@ CREATE INDEX IF NOT EXISTS idx_items_seller_wallet ON items(seller_wallet_addres
 CREATE TABLE IF NOT EXISTS orders (
     order_id VARCHAR(255) PRIMARY KEY,
     buyer_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    buyer_wallet_address VARCHAR(42) NOT NULL,  -- Cached buyer wallet for blockchain proof
+    buyer_wallet_address VARCHAR(42),  -- Removed NOT NULL
     item_id VARCHAR(255) NOT NULL REFERENCES items(id) ON DELETE RESTRICT,
     quantity INTEGER NOT NULL DEFAULT 1,
     total_amount NUMERIC(20, 2) NOT NULL,
@@ -102,6 +116,9 @@ CREATE TABLE IF NOT EXISTS orders (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Transfer ownership of table to spc_user
+ALTER TABLE orders OWNER TO spc_user;
 
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_orders_buyer_id ON orders(buyer_id);
@@ -125,6 +142,9 @@ CREATE TABLE IF NOT EXISTS shipments (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Transfer ownership of table to spc_user
+ALTER TABLE shipments OWNER TO spc_user;
+
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_shipments_order_id ON shipments(order_id);
 CREATE INDEX IF NOT EXISTS idx_shipments_logistics_id ON shipments(logistics_id);
@@ -146,6 +166,9 @@ CREATE TABLE IF NOT EXISTS blockchain_proofs (
     metadata JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Transfer ownership of table to spc_user
+ALTER TABLE blockchain_proofs OWNER TO spc_user;
 
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_blockchain_proofs_tx_hash ON blockchain_proofs(blockchain_tx_hash);
@@ -169,6 +192,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Set function owner
+ALTER FUNCTION update_timestamp_column OWNER TO spc_user;
+
 -- Create triggers for updated_at columns
 DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
@@ -189,11 +215,15 @@ CREATE TRIGGER update_shipments_updated_at BEFORE UPDATE ON shipments
 -- =============================================================================
 -- GRANT PRIVILEGES
 -- =============================================================================
+-- Apply recursive ownership and permissions
 GRANT ALL PRIVILEGES ON DATABASE "supply-chain-test" TO spc_user;
 GRANT ALL PRIVILEGES ON SCHEMA public TO spc_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO spc_user;
-GRANT SELECT, INSERT, UPDATE, DELETE ON blockchain_proofs TO spc_user;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO spc_user;
+
+-- Set Default Privileges for future objects
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO spc_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO spc_user;
 
 -- Optional: Add comments to table
 COMMENT ON TABLE blockchain_proofs IS 'Stores all blockchain transaction proofs and hashes for verification and audit trail purposes';
@@ -208,14 +238,4 @@ COMMENT ON COLUMN blockchain_proofs.metadata IS 'Additional metadata stored as J
 -- =============================================================================
 -- VERIFY SCHEMA
 -- =============================================================================
--- Run these queries to verify the setup:
--- \dt                          -- List all tables
--- \d users                    -- Describe users table
--- \d items                    -- Describe items table
--- \d orders                   -- Describe orders table
--- \d shipments                -- Describe shipments table
--- \d blockchain_proofs        -- Describe blockchain_proofs table
--- SELECT * FROM pg_indexes WHERE tablename IN ('users', 'items', 'orders', 'shipments', 'blockchain_proofs');
-
--- ✅ Setup complete!
-
+-- Setup complete!
