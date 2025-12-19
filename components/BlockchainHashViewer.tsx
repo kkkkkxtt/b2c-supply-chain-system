@@ -37,6 +37,7 @@ const EVENT_TYPE_MAP: Record<number, string> = {
   3: 'PAYMENT_RELEASED',
   4: 'ITEM_METADATA_HASHED',
   5: 'USER_IDENTITY_HASHED',
+  6: 'ESCROW_STATE_CHANGED',
   7: 'ITEM_UPDATED',
   8: 'USER_PROFILE_UPDATED',
 };
@@ -56,77 +57,86 @@ export const BlockchainHashViewer: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedEventType, setSelectedEventType] = useState<number | null>(null);
+  const [selectedEventType, setSelectedEventType] = useState<number | null>(
+    null
+  );
 
   const PROOFS_PER_PAGE = 2;
 
-  const handleSearch = useCallback(async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setError(null);
-    setCurrentPage(1);
+  const handleSearch = useCallback(
+    async (e?: React.FormEvent) => {
+      if (e) e.preventDefault();
+      setError(null);
+      setCurrentPage(1);
 
-    // If event type is selected, search by event type
-    if (selectedEventType !== null) {
+      // If event type is selected, search by event type
+      if (selectedEventType !== null) {
+        setLoading(true);
+        setSearched(true);
+        try {
+          console.log('[Viewer] Searching by event type:', selectedEventType);
+          const response = await fetch(
+            `/api/blockchain-proofs?eventType=${selectedEventType}&limit=200`
+          );
+          if (response.ok) {
+            const data = await response.json();
+            console.log(
+              '[Viewer] Event type search returned',
+              data.length,
+              'results'
+            );
+            setProofs(data);
+          } else {
+            const errorData = await response.json();
+            setError(errorData.error || 'Search failed');
+            setProofs([]);
+          }
+        } catch (error) {
+          console.error('[Viewer] Event type search failed:', error);
+          setError(error instanceof Error ? error.message : 'Search failed');
+          setProofs([]);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Don't search if search term is empty
+      if (!searchTerm.trim()) {
+        setSearched(false);
+        setProofs([]);
+        return;
+      }
+
       setLoading(true);
       setSearched(true);
+
       try {
-        console.log('[Viewer] Searching by event type:', selectedEventType);
+        console.log('[Viewer] Searching for:', searchTerm);
         const response = await fetch(
-          `/api/blockchain-proofs?eventType=${selectedEventType}&limit=200`
+          `/api/blockchain-proofs?search=${encodeURIComponent(searchTerm)}`
         );
+
         if (response.ok) {
           const data = await response.json();
-          console.log('[Viewer] Event type search returned', data.length, 'results');
+          console.log('[Viewer] Search returned', data.length, 'results');
           setProofs(data);
         } else {
           const errorData = await response.json();
+          console.error('[Viewer] Search error:', errorData);
           setError(errorData.error || 'Search failed');
           setProofs([]);
         }
       } catch (error) {
-        console.error('[Viewer] Event type search failed:', error);
+        console.error('[Viewer] Search failed:', error);
         setError(error instanceof Error ? error.message : 'Search failed');
         setProofs([]);
       } finally {
         setLoading(false);
       }
-      return;
-    }
-
-    // Don't search if search term is empty
-    if (!searchTerm.trim()) {
-      setSearched(false);
-      setProofs([]);
-      return;
-    }
-
-    setLoading(true);
-    setSearched(true);
-
-    try {
-      console.log('[Viewer] Searching for:', searchTerm);
-      const response = await fetch(
-        `/api/blockchain-proofs?search=${encodeURIComponent(searchTerm)}`
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[Viewer] Search returned', data.length, 'results');
-        setProofs(data);
-      } else {
-        const errorData = await response.json();
-        console.error('[Viewer] Search error:', errorData);
-        setError(errorData.error || 'Search failed');
-        setProofs([]);
-      }
-    } catch (error) {
-      console.error('[Viewer] Search failed:', error);
-      setError(error instanceof Error ? error.message : 'Search failed');
-      setProofs([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [searchTerm, selectedEventType]);
+    },
+    [searchTerm, selectedEventType]
+  );
 
   // Check for txHash in sessionStorage on mount (from "View on Blockchain Hash Viewer" link)
   useEffect(() => {

@@ -16,7 +16,7 @@ import {
  * Query params:
  * - search: Search term (searches tx_hash, entity_id, sender_address, data_hash)
  * - type: Get proofs of specific entity type (USER, ITEM, ORDER, SHIPMENT)
- * - eventType: Get proofs of specific event type (0-5)
+ * - eventType: Get proofs of specific event type (0-8)
  * - sender: Get proofs from specific sender address
  * - txHash: Get specific proof by transaction hash
  * - entity: Get proofs for specific entity ID
@@ -53,12 +53,12 @@ export async function GET(req: NextRequest) {
     // If searching by event type
     else if (eventTypeParam) {
       const eventType = parseInt(eventTypeParam);
-      if (!isNaN(eventType) && eventType >= 0 && eventType <= 5) {
+      if (!isNaN(eventType) && eventType >= 0 && eventType <= 8) {
         console.log('[API] Searching by event type:', eventType);
         results = await getProofsByEventType(eventType, limit);
       } else {
         return NextResponse.json(
-          { error: 'Invalid event type. Must be 0-5.' },
+          { error: 'Invalid event type. Must be 0-8.' },
           { status: 400 }
         );
       }
