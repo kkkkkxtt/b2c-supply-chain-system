@@ -7,7 +7,7 @@ const connectionConfig = {
   user: process.env.DB_USER || 'spc_user',
   password: process.env.DB_PASSWORD || '123456',
   host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'supply_chain_test',
+  database: process.env.DB_NAME || 'supply-chain-test',
   port: parseInt(process.env.DB_PORT || '5432'),
   ssl:
     process.env.DB_HOST && process.env.DB_HOST !== 'localhost'
