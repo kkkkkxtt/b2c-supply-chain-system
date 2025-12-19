@@ -75,7 +75,35 @@ export async function createItem(item: Item): Promise<Item> {
       throw new Error('Failed to create item, database returned no rows.');
     }
 
-    const createdItem = normalizeItem(result.rows[0]);
+    let createdItem = normalizeItem(result.rows[0]);
+
+    // If the seller wallet wasn't provided, try to fetch it from the users table and persist it
+    if (!createdItem.seller_wallet_address) {
+      try {
+        const userResult = await query(
+          'SELECT wallet_address FROM users WHERE id = $1',
+          [createdItem.seller_id]
+        );
+        if (userResult.rows.length > 0 && userResult.rows[0].wallet_address) {
+          const wallet = userResult.rows[0].wallet_address;
+          const upd = await query(
+            'UPDATE items SET seller_wallet_address = $1 WHERE id = $2 RETURNING *',
+            [wallet, createdItem.id]
+          );
+          if (upd.rows.length > 0) {
+            createdItem = normalizeItem(upd.rows[0]);
+            console.log(
+              `[DB] Updated item ${createdItem.id} with seller wallet ${wallet}`
+            );
+          }
+        }
+      } catch (e) {
+        console.error(
+          '[DB] Failed to populate seller_wallet_address for created item:',
+          e
+        );
+      }
+    }
 
     // On-chain proof (hash only)
     try {

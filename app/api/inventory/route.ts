@@ -6,6 +6,7 @@ import {
   getAllItems,
   updateItemBySeller,
 } from '@/lib/db/items';
+import { getUserById } from '@/lib/db/users';
 import { Item } from '@/types/item';
 
 type CurrentUser = {
@@ -72,6 +73,21 @@ export async function POST(req: NextRequest) {
     price: Number(body.price),
     stock: Number(body.stock),
   };
+
+  // Ensure seller wallet is cached on the item; fetch from user profile if missing
+  if (!newItem.seller_wallet_address) {
+    try {
+      const seller = await getUserById(user.id);
+      if (seller?.wallet_address) {
+        newItem.seller_wallet_address = seller.wallet_address;
+      }
+    } catch (e) {
+      console.error(
+        '[DB] Failed to fetch seller wallet during item creation:',
+        e
+      );
+    }
+  }
 
   const createdItem = await createItem(newItem);
   return NextResponse.json(createdItem, { status: 201 });
