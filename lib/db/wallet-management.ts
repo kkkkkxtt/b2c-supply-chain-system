@@ -28,23 +28,35 @@ export async function updateWalletBalance(
       if (balanceCheck.rows.length === 0) {
         throw new Error('User not found.');
       }
-      if (parseFloat(balanceCheck.rows[0].wallet_balance) + adjustment < 0) {
-        throw new Error('Insufficient funds for withdrawal.');
+      const currentBalance = Number(balanceCheck.rows[0].wallet_balance);
+      if (currentBalance + adjustment < 0) {
+        throw new Error(
+          `Insufficient funds for withdrawal. Current balance: $${currentBalance.toFixed(
+            2
+          )}`
+        );
       }
     }
 
     // Update the balance using a single atomic SQL statement
     const text = `
         UPDATE users
-        SET wallet_balance = wallet_balance + $1
+        SET wallet_balance = wallet_balance + $1, updated_at = NOW()
         WHERE id = $2
-        RETURNING id, name, email, role, address, wallet_balance
+        RETURNING id, role, name, email, wallet_address, wallet_balance, contact_number, address, created_at, updated_at
     `;
     const values = [adjustment, userId];
 
     const result: QueryResult = await query(text, values);
 
-    return result.rows.length > 0 ? (result.rows[0] as User) : null;
+    if (result.rows.length === 0) return null;
+
+    // Ensure wallet_balance is a number, not a string
+    const user = result.rows[0] as User;
+    return {
+      ...user,
+      wallet_balance: Number(user.wallet_balance),
+    };
   } catch (error: any) {
     console.error('Database error during wallet transaction:', error.message);
     throw new Error(error.message || 'Wallet transaction failed.');

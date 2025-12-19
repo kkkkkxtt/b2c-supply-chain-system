@@ -9,7 +9,15 @@ import { User } from '@/types/user';
 export async function POST(req: NextRequest) {
   try {
     // Receive necessary data from client
-    const { buyer, item } = (await req.json()) as { buyer: User; item: Item };
+    const {
+      buyer,
+      item,
+      quantity,
+    } = (await req.json()) as {
+      buyer: User;
+      item: Item;
+      quantity?: number;
+    };
 
     if (!buyer || !item) {
       return NextResponse.json(
@@ -19,12 +27,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Execute the atomic server-side transaction
-    const result = await createOrderTransaction(buyer, item);
+    const result = await createOrderTransaction(buyer, item, quantity || 1);
 
     return NextResponse.json({
       message: 'Order successfully placed.',
       orderId: result.order.order_id,
       txHash: result.txHash,
+      order: result.order,
+      item: {
+        id: item.id,
+        item_name: item.item_name,
+        price: item.price,
+      },
     });
   } catch (error: any) {
     console.error('API Error during order creation:', error);

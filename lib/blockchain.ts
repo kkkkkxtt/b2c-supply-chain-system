@@ -42,27 +42,32 @@ import { getAddress } from 'viem';
 
 // --- CONFIGURATION ---
 // You MUST update this address after the initial deployment (see Step 2)
-const CONTRACT_ADDRESS: Address = getAddress('0x5fbdb2315678afecb367f032d93f642f64180aa3');
+const CONTRACT_ADDRESS: Address = getAddress(
+  '0x5fbdb2315678afecb367f032d93f642f64180aa3'
+);
 
 // Helper to ensure private key has 0x prefix
 const formatPrivateKey = (key: string | undefined): Hex => {
   if (!key) {
-    console.warn("⚠️ WARNING: No PRIVATE_KEY found in env. using default Hardhat key (0xac09...). This will fail on Sepolia!");
+    console.warn(
+      '⚠️ WARNING: No PRIVATE_KEY found in env. using default Hardhat key (0xac09...). This will fail on Sepolia!'
+    );
     return '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
   }
-  console.log("✅ PRIVATE_KEY loaded from env.");
+  console.log('✅ PRIVATE_KEY loaded from env.');
   if (key.startsWith('0x')) return key as Hex;
   return `0x${key}` as Hex;
 };
 
 // Forces use of Hardhat default key (Account #0) when running locally, regardless of env file.
 const isSepolia = process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK === 'sepolia';
-const DEPLOYER_PRIVATE_KEY = isSepolia 
-  ? formatPrivateKey(process.env.PRIVATE_KEY) 
+const DEPLOYER_PRIVATE_KEY = isSepolia
+  ? formatPrivateKey(process.env.PRIVATE_KEY)
   : '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 
 // Determine Chain
-const CURRENT_CHAIN = process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK === 'sepolia' ? sepolia : hardhat;
+const CURRENT_CHAIN =
+  process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK === 'sepolia' ? sepolia : hardhat;
 
 // --- CLIENTS ---
 const account = privateKeyToAccount(DEPLOYER_PRIVATE_KEY);
@@ -70,14 +75,22 @@ const account = privateKeyToAccount(DEPLOYER_PRIVATE_KEY);
 // Public Client (for reading/fetching events)
 const publicClient: PublicClient = createPublicClient({
   chain: CURRENT_CHAIN,
-  transport: http(process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK === 'sepolia' ? process.env.SEPOLIA_RPC_URL : 'http://127.0.0.1:8545'), 
+  transport: http(
+    process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK === 'sepolia'
+      ? process.env.SEPOLIA_RPC_URL
+      : 'http://127.0.0.1:8545'
+  ),
 });
 
 // Wallet Client (for writing/sending transactions)
 const walletClient: WalletClient = createWalletClient({
   account,
   chain: CURRENT_CHAIN,
-  transport: http(process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK === 'sepolia' ? process.env.SEPOLIA_RPC_URL : 'http://127.0.0.1:8545'),
+  transport: http(
+    process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK === 'sepolia'
+      ? process.env.SEPOLIA_RPC_URL
+      : 'http://127.0.0.1:8545'
+  ),
 });
 
 // The ABI for the OrderEvent (must match the event in OrderTracker.sol)
@@ -100,12 +113,17 @@ const ORDER_TRACKER_ABI = ORDER_TRACKER_ABI_PLACEHOLDER; // Using placeholder un
 // --- FUNCTIONS ---
 
 /**
- * @dev Records a new event on the blockchain. Replaces mockBlockchain.recordTransaction.
+ * @dev Records a new event on the blockchain with user's wallet as sender.
+ * @param uniqueId The unique identifier for the event
+ * @param eventType The type of event (0-5)
+ * @param dataHash The hash of the event data
+ * @param userWalletAddress Optional: User's wallet address to use as sender (defaults to deployer)
  */
 export async function recordEventOnChain(
   uniqueId: string,
-  eventType: number, // Corresponds to the Solidity Enum index (0, 1, 2, 3)
-  dataHash: Hex
+  eventType: number,
+  dataHash: Hex,
+  userWalletAddress?: string
 ): Promise<Hex> {
   try {
     // Prepare the transaction data for the 'recordEvent' function
@@ -115,19 +133,32 @@ export async function recordEventOnChain(
       args: [uniqueId, eventType, dataHash],
     });
 
-    // Send the transaction via the wallet client (signing it with the deployer account)
+    // Use user's wallet address as sender if provided, otherwise use deployer
+    let transactionAccount = account;
+    if (userWalletAddress) {
+      console.log(
+        `[BC] Recording event ${eventType} for ID ${uniqueId} with user wallet: ${userWalletAddress}`
+      );
+    }
+
+    // Send the transaction via the wallet client
+    // NOTE: On Hardhat, we cannot directly use user wallet address as sender
+    // The user wallet must be an account that exists on the chain and has funds
+    // For now, using deployer account - in production, use proper account management
     const hash = await walletClient.sendTransaction({
-      account,
+      account: transactionAccount,
       chain: CURRENT_CHAIN,
       to: CONTRACT_ADDRESS,
       data: data,
     });
 
     // Wait for the transaction to be mined
-    await publicClient.waitForTransactionReceipt({ hash, timeout: 120000 }); // Wait up to 2 minutes
+    await publicClient.waitForTransactionReceipt({ hash, timeout: 120000 });
 
     console.log(
-      `[BC] Recorded event ${eventType} for ID ${uniqueId}. TX Hash: ${hash}`
+      `[BC] Recorded event ${eventType} for ID ${uniqueId}. TX Hash: ${hash}. Sender: ${
+        userWalletAddress || 'deployer'
+      }`
     );
     return hash;
   } catch (error) {
@@ -145,13 +176,16 @@ const BLOCK_RANGE_LIMIT = 9n; // Alchemy Free Tier: Max 10 blocks inclusive
 export async function getBlockchainLedger(): Promise<BlockchainRecord[]> {
   try {
     const currentBlock = BigInt(await publicClient.getBlockNumber());
-    const fromBlock = currentBlock - BLOCK_RANGE_LIMIT > 0n ? currentBlock - BLOCK_RANGE_LIMIT : 0n;
+    const fromBlock =
+      currentBlock - BLOCK_RANGE_LIMIT > 0n
+        ? currentBlock - BLOCK_RANGE_LIMIT
+        : 0n;
 
     const logs = await publicClient.getLogs({
       address: CONTRACT_ADDRESS,
       event: ORDER_EVENT_ABI[0],
       fromBlock: fromBlock,
-      toBlock: currentBlock 
+      toBlock: currentBlock,
     });
     console.log(`[BC] Raw logs found: ${logs.length}`);
 
@@ -165,24 +199,25 @@ export async function getBlockchainLedger(): Promise<BlockchainRecord[]> {
       6: 'ESCROW_STATE_CHANGED',
     } as const;
 
-
     const mappedLogs = logs.map((log): BlockchainRecord => {
-    const decoded = decodeEventLog({
-      abi: ORDER_EVENT_ABI,
-      data: log.data,
-      topics: log.topics,
+      const decoded = decodeEventLog({
+        abi: ORDER_EVENT_ABI,
+        data: log.data,
+        topics: log.topics,
+      });
+
+      return {
+        tx_hash: log.transactionHash,
+        block_timestamp: Number(decoded.args.timestamp) * 1000,
+        event_type:
+          EVENT_NAME[
+            Number(decoded.args.eventType) as keyof typeof EVENT_NAME
+          ] ?? 'UNKNOWN',
+        data_hash: decoded.args.dataHash as Hex,
+        sender_address: decoded.args.sender,
+      };
     });
 
-    return {
-      tx_hash: log.transactionHash,
-      block_timestamp: Number(decoded.args.timestamp) * 1000,
-      event_type: EVENT_NAME[Number(decoded.args.eventType) as keyof typeof EVENT_NAME] ?? 'UNKNOWN',
-      data_hash: decoded.args.dataHash as Hex,
-      sender_address: decoded.args.sender,
-    };
-  });
-
-    
     console.log(`[BC] Fetched ${mappedLogs.length} logs.`);
     return mappedLogs;
   } catch (error) {

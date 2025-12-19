@@ -5,11 +5,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, UserRole } from '@/types/user';
 import { Layout } from '@/components/Layout';
+import { UserProfile } from '@/components/UserProfile';
 import { Marketplace } from '@/components/Marketplace';
 import { Inventory } from '@/components/Inventory';
 import { OrderList } from '@/components/OrderList';
 import { ShipmentManager } from '@/components/ShipmentManager';
 import { BlockchainViewer } from '@/components/BlockchainViewer';
+import { BlockchainHashViewer } from '@/components/BlockchainHashViewer';
 import {
   LogIn,
   Edit2,
@@ -55,9 +57,7 @@ export default function App() {
   // Sign Up Form State
   const [signupForm, setSignupForm] = useState(initialSignupForm);
 
-  // Profile Edit State
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editForm, setEditForm] = useState<Partial<User>>({});
+  // Wallet Management State
   const [walletAmount, setWalletAmount] = useState('');
 
   const refreshUser = useCallback(async () => {
@@ -127,9 +127,9 @@ export default function App() {
     setLoginError('');
     setLoading(true);
 
-    // Validate address is present if role is not Logistics
-    if (signupForm.role !== UserRole.LOGISTICS && !signupForm.address.trim()) {
-      setLoginError('Address is required for Buyers and Sellers.');
+    // Validate address is present only for Buyers
+    if (signupForm.role === UserRole.BUYER && !signupForm.address.trim()) {
+      setLoginError('Address is required for Buyers.');
       setLoading(false);
       return;
     }
@@ -138,6 +138,9 @@ export default function App() {
     const payload: User = {
       id: `u_${Date.now()}`,
       wallet_balance: 0,
+      wallet_address: `0x${Date.now().toString(16)}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       ...signupForm,
       // Ensure password is sent for hashing on the server
       password: signupForm.password,
@@ -180,27 +183,6 @@ export default function App() {
   };
 
   // --- Profile/Wallet Handlers (Unmodified) ---
-
-  const handleSaveProfile = async () => {
-    if (!currentUser) return;
-    setLoading(true);
-
-    const response = await fetch('/api/profile', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: currentUser.id, updates: editForm }),
-    });
-
-    if (response.ok) {
-      const updatedUser = await response.json();
-      setCurrentUser(updatedUser);
-      localStorage.setItem('session_user', JSON.stringify(updatedUser));
-      setIsEditingProfile(false);
-    } else {
-      alert('Failed to save profile.');
-    }
-    setLoading(false);
-  };
 
   const handleWalletTransaction = async (type: 'deposit' | 'withdraw') => {
     if (!currentUser || !walletAmount) return;
@@ -397,20 +379,20 @@ export default function App() {
                   <option value={UserRole.LOGISTICS}>Logistics Provider</option>
                 </select>
               </div>
-              {/* ADDRESS FIELD (Conditional Requirement) */}
+              {/* ADDRESS FIELD (Only required for Buyers) */}
               <div>
                 <label className="block text-sm font-medium text-black mb-1">
                   Address
-                  {signupForm.role !== UserRole.LOGISTICS && (
+                  {signupForm.role === UserRole.BUYER && (
                     <span className="text-red-500 ml-1">*</span>
                   )}
-                  {signupForm.role === UserRole.LOGISTICS && (
+                  {signupForm.role !== UserRole.BUYER && (
                     <span className="text-slate-500 ml-1">(Optional)</span>
                   )}
                 </label>
                 <textarea
-                  // Only 'required' if the role is NOT Logistics
-                  required={signupForm.role !== UserRole.LOGISTICS}
+                  // Only 'required' if the role is BUYER
+                  required={signupForm.role === UserRole.BUYER}
                   rows={2}
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
                   value={signupForm.address}
@@ -473,108 +455,50 @@ export default function App() {
     >
       {/* ... (Existing page rendering logic) ... */}
       {page === 'profile' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* User Info Card */}
-          <div className="lg:col-span-2 bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-black">User Profile</h2>
-              {!isEditingProfile ? (
-                <button
-                  onClick={() => {
-                    setEditForm({
-                      name: currentUser.name,
-                      address: currentUser.address,
-                    });
-                    setIsEditingProfile(true);
-                  }}
-                  className="flex items-center space-x-2 text-blue-600 hover:text-blue-800"
-                >
-                  <Edit2 size={16} />
-                  <span>Edit</span>
-                </button>
-              ) : (
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setIsEditingProfile(false)}
-                    className="p-2 text-black hover:text-slate-700"
-                  >
-                    <X size={20} />
-                  </button>
-                  <button
-                    onClick={handleSaveProfile}
-                    className="flex items-center space-x-2 bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
-                  >
-                    <Save size={16} />
-                    <span>Save</span>
-                  </button>
-                </div>
-              )}
-            </div>
+        <div className="grid grid-cols-1 gap-8">
+          <UserProfile
+            user={currentUser}
+            onProfileUpdate={async (updatedUser) => {
+              // Only send editable fields to the API (filter out immutable fields)
+              const editableUpdates = {
+                name: updatedUser.name,
+                email: updatedUser.email,
+                contact_number: updatedUser.contact_number,
+                address: updatedUser.address,
+              };
 
-            <div className="space-y-6">
-              {/* Name */}
-              <div className="grid grid-cols-3 border-b py-3 items-center">
-                <span className="text-black">Name</span>
-                {isEditingProfile ? (
-                  <input
-                    className="col-span-2 border p-2 rounded"
-                    value={editForm.name || ''}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, name: e.target.value })
-                    }
-                  />
-                ) : (
-                  <span className="col-span-2 font-medium">
-                    {currentUser.name}
-                  </span>
-                )}
-              </div>
-              {/* Email */}
-              <div className="grid grid-cols-3 border-b py-3">
-                <span className="text-black">Email</span>
-                <span className="col-span-2 font-medium text-slate-400 cursor-not-allowed">
-                  {currentUser.email}
-                </span>
-              </div>
-              {/* Role */}
-              <div className="grid grid-cols-3 border-b py-3">
-                <span className="text-black">Role</span>
-                <span className="col-span-2 font-medium uppercase tracking-wide text-xs bg-slate-100 inline-block py-1 px-2 rounded w-max">
-                  {currentUser.role}
-                </span>
-              </div>
-              {/* Address */}
-              <div className="grid grid-cols-3 py-3 items-center">
-                <span className="text-black">Address</span>
-                {isEditingProfile ? (
-                  <textarea
-                    className="col-span-2 border p-2 rounded"
-                    value={editForm.address || ''}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, address: e.target.value })
-                    }
-                  />
-                ) : (
-                  <span className="col-span-2 font-medium">
-                    {currentUser.address}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
+              const response = await fetch('/api/profile', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userId: currentUser.id,
+                  updates: editableUpdates,
+                }),
+              });
+
+              if (response.ok) {
+                const updated = await response.json();
+                setCurrentUser(updated);
+                localStorage.setItem('session_user', JSON.stringify(updated));
+              } else {
+                throw new Error('Failed to update profile');
+              }
+            }}
+            isLoading={loading}
+          />
 
           {/* Wallet Card - Only for Buyer and Seller */}
           {currentUser.role !== UserRole.LOGISTICS && (
-            <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm h-fit">
-              <div className="flex items-center space-x-2 mb-6 text-black">
+            <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
+              <div className="flex items-center space-x-2 mb-6">
                 <Wallet className="text-blue-600" size={24} />
-                <h2 className="text-xl font-bold">My Wallet</h2>
+                <h2 className="text-2xl font-bold text-slate-900">My Wallet</h2>
               </div>
 
-              <div className="bg-slate-900 rounded-xl p-6 text-white mb-6 relative overflow-hidden">
+              <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl p-6 text-white mb-6 relative overflow-hidden">
                 <div className="relative z-10">
                   <p className="text-slate-400 text-sm mb-1">Current Balance</p>
-                  <p className="text-3xl font-bold">
+                  <p className="text-4xl font-bold">
                     ${currentUser.wallet_balance.toLocaleString()}
                   </p>
                 </div>
@@ -584,7 +508,7 @@ export default function App() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-black uppercase mb-2">
+                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-2">
                     Manage Funds
                   </label>
                   <input
@@ -599,7 +523,7 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => handleWalletTransaction('deposit')}
-                    className="flex items-center justify-center space-x-2 bg-green-50 text-green-700 py-2 rounded-lg border border-green-200 hover:bg-green-100"
+                    className="flex items-center justify-center space-x-2 bg-green-50 text-green-700 py-3 rounded-lg border border-green-200 hover:bg-green-100 font-semibold transition-colors"
                     disabled={loading}
                   >
                     <ArrowUpCircle size={18} />
@@ -607,7 +531,7 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => handleWalletTransaction('withdraw')}
-                    className="flex items-center justify-center space-x-2 bg-red-50 text-red-700 py-2 rounded-lg border border-red-200 hover:bg-red-100"
+                    className="flex items-center justify-center space-x-2 bg-red-50 text-red-700 py-3 rounded-lg border border-red-200 hover:bg-red-100 font-semibold transition-colors"
                     disabled={loading}
                   >
                     <ArrowDownCircle size={18} />
@@ -632,6 +556,8 @@ export default function App() {
       {page === 'shipments' && currentUser.role === UserRole.LOGISTICS && (
         <ShipmentManager user={currentUser} />
       )}
+
+      {page === 'blockchain-viewer' && <BlockchainHashViewer />}
 
       <BlockchainViewer />
     </Layout>

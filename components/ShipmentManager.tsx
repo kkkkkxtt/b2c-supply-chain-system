@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { Shipment } from '@/types/shipment'; // Use absolute imports
 import { User } from '@/types/user';
 import { OrderStatus, Order } from '@/types/order';
+import { Pagination } from '@/components/Pagination';
 import {
   Truck,
   MapPin,
@@ -31,6 +32,8 @@ export const ShipmentManager: React.FC<ShipmentManagerProps> = ({ user }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 5;
 
   const fetchData = async () => {
     setLoading(true);
@@ -108,10 +111,10 @@ export const ShipmentManager: React.FC<ShipmentManagerProps> = ({ user }) => {
     );
 
   const inProcessCount = shipments.filter(
-    (s) => s.current_location !== 'Out for Delivery'
+    (s) => s.current_status !== 'Out for Delivery'
   ).length;
   const completedCount = shipments.filter(
-    (s) => s.current_location === 'Out for Delivery'
+    (s) => s.current_status === 'Out for Delivery'
   ).length;
 
   return (
@@ -135,93 +138,122 @@ export const ShipmentManager: React.FC<ShipmentManagerProps> = ({ user }) => {
       </div>
 
       <div className="grid gap-4">
-        {shipments.map((shipment) => {
-          const currentIndex = getFlowIndex(shipment.current_location);
-          const isFinalStage = shipment.current_location === 'Out for Delivery';
-
-          // Find associated order to check status
-          const order = orders.find((o) => o.order_id === shipment.order_id);
-          const isOrderPending = order?.current_status === OrderStatus.PENDING;
+        {(() => {
+          const totalPages = Math.ceil(shipments.length / ITEMS_PER_PAGE);
+          const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+          const endIndex = startIndex + ITEMS_PER_PAGE;
+          const paginatedShipments = shipments.slice(startIndex, endIndex);
 
           return (
-            <div
-              key={shipment.shipment_id}
-              className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
-            >
-              <div>
-                <div className="flex items-center space-x-2 mb-2">
-                  <Truck
-                    className={
-                      isFinalStage ? 'text-green-600' : 'text-blue-600'
-                    }
-                    size={20}
-                  />
-                  <span className="font-mono text-sm font-bold text-slate-500">
-                    ID: {shipment.shipment_id}
-                  </span>
-                  {isOrderPending && (
-                    <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border border-red-200">
-                      Seller Approval Pending
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center space-x-2 text-slate-800 font-medium mb-1">
-                  <MapPin size={16} />
-                  <span>{shipment.current_location}</span>
-                </div>
-                <p className="text-xs text-slate-500">
-                  Last Update: {new Date(shipment.last_update).toLocaleString()}
-                </p>
-              </div>
+            <>
+              {paginatedShipments.map((shipment) => {
+                const currentIndex = getFlowIndex(shipment.current_status);
+                const isFinalStage =
+                  shipment.current_status === 'Out for Delivery';
 
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-slate-500 uppercase">
-                  Update Checkpoint
-                </label>
-                <div className="flex items-center space-x-2">
-                  <select
-                    className="border border-slate-300 rounded px-3 py-2 text-sm bg-slate-50 min-w-[200px] disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-100"
-                    onChange={(e) =>
-                      handleUpdateLocation(shipment, e.target.value)
-                    }
-                    disabled={!!updating || isFinalStage || isOrderPending}
-                    value={shipment.current_location}
+                // Find associated order to check status
+                const order = orders.find(
+                  (o) => o.order_id === shipment.order_id
+                );
+                const isOrderPending =
+                  order?.order_status === OrderStatus.PENDING;
+
+                return (
+                  <div
+                    key={shipment.shipment_id}
+                    className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
                   >
-                    {LOCATION_FLOW.map((loc, idx) => (
-                      <option
-                        key={loc}
-                        value={loc}
-                        disabled={idx <= currentIndex} // Enforce one-way flow
-                      >
-                        {loc}
-                      </option>
-                    ))}
-                  </select>
-                  {updating === shipment.shipment_id && (
-                    <Loader2 className="animate-spin text-blue-600" />
-                  )}
-                </div>
+                    <div>
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Truck
+                          className={
+                            isFinalStage ? 'text-green-600' : 'text-blue-600'
+                          }
+                          size={20}
+                        />
+                        <span className="font-mono text-sm font-bold text-slate-500">
+                          ID: {shipment.shipment_id}
+                        </span>
+                        {isOrderPending && (
+                          <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border border-red-200">
+                            Seller Approval Pending
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2 text-slate-800 font-medium mb-1">
+                        <MapPin size={16} />
+                        <span>{shipment.current_status}</span>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Last Update:{' '}
+                        {new Date(shipment.last_update).toLocaleString()}
+                      </p>
+                    </div>
 
-                {isOrderPending && (
-                  <div className="flex items-center text-red-500 text-xs mt-1">
-                    <AlertTriangle size={12} className="mr-1" />
-                    <span>Waiting for Seller Acceptance</span>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold text-slate-500 uppercase">
+                        Update Checkpoint
+                      </label>
+                      <div className="flex items-center space-x-2">
+                        <select
+                          className="border border-slate-300 rounded px-3 py-2 text-sm bg-slate-50 min-w-[200px] disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+                          onChange={(e) =>
+                            handleUpdateLocation(shipment, e.target.value)
+                          }
+                          disabled={
+                            !!updating || isFinalStage || isOrderPending
+                          }
+                          value={shipment.current_status}
+                        >
+                          {LOCATION_FLOW.map((loc, idx) => (
+                            <option
+                              key={loc}
+                              value={loc}
+                              disabled={idx <= currentIndex} // Enforce one-way flow
+                            >
+                              {loc}
+                            </option>
+                          ))}
+                        </select>
+                        {updating === shipment.shipment_id && (
+                          <Loader2 className="animate-spin text-blue-600" />
+                        )}
+                      </div>
+
+                      {isOrderPending && (
+                        <div className="flex items-center text-red-500 text-xs mt-1">
+                          <AlertTriangle size={12} className="mr-1" />
+                          <span>Waiting for Seller Acceptance</span>
+                        </div>
+                      )}
+                      {isFinalStage && (
+                        <span className="text-xs text-green-600 font-medium">
+                          Final Stage Reached
+                        </span>
+                      )}
+                    </div>
                   </div>
-                )}
-                {isFinalStage && (
-                  <span className="text-xs text-green-600 font-medium">
-                    Final Stage Reached
-                  </span>
-                )}
-              </div>
-            </div>
+                );
+              })}
+              {paginatedShipments.length === 0 && (
+                <div className="text-center py-10 text-slate-500">
+                  {shipments.length === 0
+                    ? 'No active shipments found.'
+                    : 'No shipments on this page.'}
+                </div>
+              )}
+              {totalPages > 1 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                  itemsPerPage={ITEMS_PER_PAGE}
+                  totalItems={shipments.length}
+                />
+              )}
+            </>
           );
-        })}
-        {shipments.length === 0 && (
-          <div className="text-center py-10 text-slate-500">
-            No active shipments found.
-          </div>
-        )}
+        })()}
       </div>
     </div>
   );

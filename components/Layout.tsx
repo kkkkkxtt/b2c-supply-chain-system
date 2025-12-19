@@ -11,6 +11,7 @@ import {
   Truck,
   User as UserIcon,
   Boxes,
+  Hash,
 } from 'lucide-react';
 
 // Define the props interface for clarity
@@ -73,6 +74,11 @@ export const Layout: React.FC<LayoutProps> = ({
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {/* Common */}
           <NavItem page="profile" icon={UserIcon} label="My Profile" />
+          <NavItem
+            page="blockchain-viewer"
+            icon={Hash}
+            label="View on Blockchain"
+          />
 
           {/* Role Based Navigation */}
           {currentUser.role === UserRole.BUYER && (

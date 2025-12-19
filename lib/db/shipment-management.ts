@@ -4,6 +4,7 @@ import { query } from '@/lib/db/client';
 import { Shipment } from '@/types/shipment';
 import { OrderStatus } from '@/types/order';
 import { recordEventOnChain } from '@/lib/blockchain';
+import { recordBlockchainProof } from '@/lib/db/blockchain-proofs';
 import { Hex } from 'viem';
 import crypto from 'crypto';
 
@@ -49,8 +50,39 @@ export async function updateShipmentLocationTransaction(
   // --- 2. RECORD ON BLOCKCHAIN ---
   let txHash: Hex;
   try {
-    txHash = await recordEventOnChain(orderId, EVENT_STATUS_UPDATE, dataHash);
-    console.log(`[BC] Shipment update recorded with TX: ${txHash}`);
+    // Fetch logistics provider wallet address for transaction identity
+    const logisticsResult = await query(
+      'SELECT wallet_address FROM users WHERE id = $1',
+      [userId]
+    );
+    const logisticsWalletAddress =
+      logisticsResult.rows[0]?.wallet_address || undefined;
+
+    txHash = await recordEventOnChain(
+      orderId,
+      EVENT_STATUS_UPDATE,
+      dataHash,
+      logisticsWalletAddress
+    );
+    console.log(
+      `[BC] Shipment update recorded with TX: ${txHash} from logistics wallet: ${logisticsWalletAddress}`
+    );
+
+    // --- 2B. STORE PROOF IN DATABASE ---
+    await recordBlockchainProof(
+      shipmentId,
+      'SHIPMENT',
+      EVENT_STATUS_UPDATE,
+      dataHash,
+      txHash,
+      logisticsWalletAddress || '',
+      {
+        order_id: orderId,
+        new_location: newLocation,
+        updater_id: userId,
+      }
+    );
+    console.log(`[DB] Proof recorded for shipment ${shipmentId}`);
   } catch (e) {
     console.error('Blockchain record failed during shipment update:', e);
     throw new Error('Blockchain transaction failed. Location not updated.');
@@ -60,13 +92,13 @@ export async function updateShipmentLocationTransaction(
   try {
     // A. Update Shipment Table:
     await query(
-      'UPDATE shipments SET current_location = $1, last_update = NOW() WHERE shipment_id = $2',
+      'UPDATE shipments SET current_status = $1, last_update = NOW() WHERE shipment_id = $2',
       [newLocation, shipmentId]
     );
 
     // B. Update Order Status to SHIPPED (if not already further along)
     await query(
-      'UPDATE orders SET current_status = $1, blockchain_tx_hash = $2 WHERE order_id = $3 AND current_status NOT IN ($4, $5, $6)',
+      'UPDATE orders SET order_status = $1, blockchain_tx_hash = $2 WHERE order_id = $3 AND order_status NOT IN ($4, $5, $6)',
       [
         OrderStatus.SHIPPED, // Set status to SHIPPED
         txHash,

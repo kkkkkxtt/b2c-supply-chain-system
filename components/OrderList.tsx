@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { Order, OrderStatus } from '@/types/order'; // Use absolute imports for types
 import { User, UserRole } from '@/types/user';
 import { Shipment } from '@/types/shipment';
+import { Pagination } from '@/components/Pagination';
 import {
   Package,
   Check,
@@ -26,6 +27,8 @@ export const OrderList: React.FC<OrderListProps> = ({ user, refreshUser }) => {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 5;
 
   const fetchData = async () => {
     setLoading(true);
@@ -126,17 +129,17 @@ export const OrderList: React.FC<OrderListProps> = ({ user, refreshUser }) => {
   // NOTE: You need to ensure 'order.payment_collected' is available on the Order type if not already defined.
   // For now, we will assume it is available.
   const pendingAcceptCount = orders.filter(
-    (o) => o.current_status === OrderStatus.PENDING
+    (o) => o.order_status === OrderStatus.PENDING
   ).length;
   const inProcessCount = orders.filter(
     (o) =>
-      o.current_status === OrderStatus.ACCEPTED ||
-      o.current_status === OrderStatus.SHIPPED
+      o.order_status === OrderStatus.ACCEPTED ||
+      o.order_status === OrderStatus.SHIPPED
   ).length;
   const deliveredCount = orders.filter(
     (o) =>
-      o.current_status === OrderStatus.DELIVERED ||
-      o.current_status === OrderStatus.CONFIRMED
+      o.order_status === OrderStatus.DELIVERED ||
+      o.order_status === OrderStatus.CONFIRMED
   ).length;
   // const paidCount = orders.filter(o => o.payment_collected).length; // Requires payment_collected field on Order
 
@@ -188,174 +191,216 @@ export const OrderList: React.FC<OrderListProps> = ({ user, refreshUser }) => {
       )}
 
       <div className="space-y-4">
-        {orders.map((order) => {
-          // Find associated shipment to check location
-          const shipment = shipments.find((s) => s.order_id === order.order_id);
-          const isOutForDelivery =
-            shipment?.current_location === 'Out for Delivery';
+        {(() => {
+          const totalPages = Math.ceil(orders.length / ITEMS_PER_PAGE);
+          const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+          const endIndex = startIndex + ITEMS_PER_PAGE;
+          const paginatedOrders = orders.slice(startIndex, endIndex);
 
           return (
-            <div
-              key={order.order_id}
-              className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
-            >
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-blue-50 rounded-lg">
-                      <Package className="text-blue-600" size={24} />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900">
-                        Order #{order.order_id}
-                      </h3>
-                      <p className="text-sm text-slate-500">
-                        {new Date(order.order_timestamp).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <div
-                      className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                        order.current_status === OrderStatus.DELIVERED
-                          ? 'bg-green-50 text-green-700 border-green-200'
-                          : 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                      }`}
-                    >
-                      {order.current_status === OrderStatus.SHIPPED ? 'IN TRANSIT' : order.current_status}
-                    </div>
-                    {/* Assuming order has payment_collected field */}
-                    {(order as any).payment_collected && (
-                      <span className="text-[10px] font-bold text-green-600 uppercase tracking-wide border border-green-200 px-2 py-0.5 rounded bg-green-50">
-                        Paid
-                      </span>
-                    )}
-                  </div>
-                </div>
+            <>
+              {paginatedOrders.map((order) => {
+                // Find associated shipment to check location
+                const shipment = shipments.find(
+                  (s) => s.order_id === order.order_id
+                );
+                const isOutForDelivery =
+                  shipment?.current_status === 'Out for Delivery';
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-sm">
-                  <div>
-                    <span className="block text-slate-500 text-xs uppercase">
-                      Amount
-                    </span>
-                    <span className="font-medium">${order.total_amount}</span>
-                  </div>
-                  <div>
-                    <span className="block text-slate-500 text-xs uppercase">
-                      Quantity
-                    </span>
-                    <span className="font-medium">{order.quantity}</span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="block text-slate-500 text-xs uppercase">
-                      Latest Blockchain Hash
-                    </span>
-                    <span className="font-mono text-xs text-blue-600 bg-blue-50 p-1 rounded block truncate">
-                      {order.blockchain_tx_hash || 'Pending Confirmation...'}
-                    </span>
-                  </div>
-                  {shipment && (
-                    <div className="col-span-4 mt-2 bg-slate-50 p-2 rounded flex items-center text-xs text-slate-600">
-                      <Truck size={12} className="mr-2" />
-                      <span className="font-semibold mr-1">
-                        Current Location:
-                      </span>{' '}
-                      {shipment.current_location}
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions based on Role and Status */}
-                <div className="flex justify-end pt-4 border-t border-slate-100 gap-3">
-                  {/* Seller Actions */}
-                  {user.role === UserRole.SELLER && (
-                    <>
-                      {order.current_status === OrderStatus.PENDING && (
-                        <button
-                          onClick={() =>
-                            updateStatus(order, OrderStatus.ACCEPTED)
-                          }
-                          disabled={!!processing}
-                          className="flex items-center space-x-2 bg-slate-900 text-white px-4 py-2 rounded hover:bg-slate-800"
-                        >
-                          {processing === order.order_id ? (
-                            <Loader2 className="animate-spin" size={16} />
-                          ) : (
-                            <Check size={16} />
+                return (
+                  <div
+                    key={order.order_id}
+                    className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
+                  >
+                    <div className="p-6">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="p-2 bg-blue-50 rounded-lg">
+                            <Package className="text-blue-600" size={24} />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-slate-900">
+                              Order #{order.order_id}
+                            </h3>
+                          {order.item_name && (
+                            <p className="text-xs text-slate-500">
+                              Item: <span className="font-medium">{order.item_name}</span>
+                            </p>
                           )}
-                          <span>Accept Order</span>
-                        </button>
-                      )}
-
-                      {/* Requires order.payment_collected field */}
-                      {/* We cast to any here to allow for the mock field */}
-                      {(order.current_status === OrderStatus.DELIVERED ||
-                        order.current_status === OrderStatus.CONFIRMED) &&
-                        !(order as any).payment_collected && (
-                          <button
-                            onClick={() => collectPayment(order)}
-                            disabled={!!processing}
-                            className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 shadow-sm"
+                            <p className="text-sm text-slate-500">
+                              {new Date(
+                                order.order_timestamp
+                              ).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <div
+                            className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                              order.order_status === OrderStatus.DELIVERED
+                                ? 'bg-green-50 text-green-700 border-green-200'
+                                : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                            }`}
                           >
-                            {processing === order.order_id ? (
-                              <Loader2 className="animate-spin" size={16} />
-                            ) : (
-                              <DollarSign size={16} />
-                            )}
-                            <span>Collect Payment</span>
-                          </button>
-                        )}
-                    </>
-                  )}
+                            {order.order_status === OrderStatus.SHIPPED
+                              ? 'IN TRANSIT'
+                              : order.order_status}
+                          </div>
+                          {/* Assuming order has payment_collected field */}
+                          {(order as any).payment_collected && (
+                            <span className="text-[10px] font-bold text-green-600 uppercase tracking-wide border border-green-200 px-2 py-0.5 rounded bg-green-50">
+                              Paid
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-                  {/* Buyer Actions */}
-                  {user.role === UserRole.BUYER &&
-                    order.current_status === OrderStatus.SHIPPED && (
-                      <>
-                        {isOutForDelivery ? (
-                          <button
-                            onClick={() =>
-                              updateStatus(order, OrderStatus.DELIVERED)
-                            }
-                            disabled={!!processing}
-                            className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-                          >
-                            {processing === order.order_id ? (
-                              <Loader2 className="animate-spin" size={16} />
-                            ) : (
-                              <CheckCircle size={16} />
-                            )}
-                            <span>Confirm Receipt</span>
-                          </button>
-                        ) : (
-                          <div className="flex items-center space-x-2 text-slate-400 bg-slate-50 px-3 py-2 rounded text-xs select-none">
-                            <Truck size={14} />
-                            <span>Awaiting Delivery</span>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-sm">
+                        <div>
+                          <span className="block text-slate-500 text-xs uppercase">
+                            Amount
+                          </span>
+                          <span className="font-medium">
+                            ${order.total_amount}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="block text-slate-500 text-xs uppercase">
+                            Quantity
+                          </span>
+                          <span className="font-medium">{order.quantity}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="block text-slate-500 text-xs uppercase">
+                            Latest Blockchain Hash
+                          </span>
+                          <span className="font-mono text-xs text-blue-600 bg-blue-50 p-1 rounded block truncate">
+                            {order.blockchain_tx_hash ||
+                              'Pending Confirmation...'}
+                          </span>
+                        </div>
+                        {shipment && (
+                          <div className="col-span-4 mt-2 bg-slate-50 p-2 rounded flex items-center text-xs text-slate-600">
+                            <Truck size={12} className="mr-2" />
+                            <span className="font-semibold mr-1">
+                              Current Status:
+                            </span>{' '}
+                            {shipment.current_status}
                           </div>
                         )}
-                      </>
-                    )}
+                      </div>
 
-                  {/* View Hash */}
-                  {order.blockchain_tx_hash && (
-                    <a
-                      href="#"
-                      className="flex items-center text-xs text-blue-500 hover:text-blue-700 self-center"
-                    >
-                      <ExternalLink size={12} className="mr-1" /> View on
-                      Etherscan (Sim)
-                    </a>
-                  )}
+                      {/* Actions based on Role and Status */}
+                      <div className="flex justify-end pt-4 border-t border-slate-100 gap-3">
+                        {/* Seller Actions */}
+                        {user.role === UserRole.SELLER && (
+                          <>
+                            {order.order_status === OrderStatus.PENDING && (
+                              <button
+                                onClick={() =>
+                                  updateStatus(order, OrderStatus.ACCEPTED)
+                                }
+                                disabled={!!processing}
+                                className="flex items-center space-x-2 bg-slate-900 text-white px-4 py-2 rounded hover:bg-slate-800"
+                              >
+                                {processing === order.order_id ? (
+                                  <Loader2 className="animate-spin" size={16} />
+                                ) : (
+                                  <Check size={16} />
+                                )}
+                                <span>Accept Order</span>
+                              </button>
+                            )}
+
+                            {/* Requires order.payment_collected field */}
+                            {/* We cast to any here to allow for the mock field */}
+                            {(order.order_status === OrderStatus.DELIVERED ||
+                              order.order_status === OrderStatus.CONFIRMED) &&
+                              !(order as any).payment_collected && (
+                                <button
+                                  onClick={() => collectPayment(order)}
+                                  disabled={!!processing}
+                                  className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 shadow-sm"
+                                >
+                                  {processing === order.order_id ? (
+                                    <Loader2
+                                      className="animate-spin"
+                                      size={16}
+                                    />
+                                  ) : (
+                                    <DollarSign size={16} />
+                                  )}
+                                  <span>Collect Payment</span>
+                                </button>
+                              )}
+                          </>
+                        )}
+
+                        {/* Buyer Actions */}
+                        {user.role === UserRole.BUYER &&
+                          order.order_status === OrderStatus.SHIPPED && (
+                            <>
+                              {isOutForDelivery ? (
+                                <button
+                                  onClick={() =>
+                                    updateStatus(order, OrderStatus.DELIVERED)
+                                  }
+                                  disabled={!!processing}
+                                  className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                                >
+                                  {processing === order.order_id ? (
+                                    <Loader2
+                                      className="animate-spin"
+                                      size={16}
+                                    />
+                                  ) : (
+                                    <CheckCircle size={16} />
+                                  )}
+                                  <span>Confirm Receipt</span>
+                                </button>
+                              ) : (
+                                <div className="flex items-center space-x-2 text-slate-400 bg-slate-50 px-3 py-2 rounded text-xs select-none">
+                                  <Truck size={14} />
+                                  <span>Awaiting Delivery</span>
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                        {/* View Hash */}
+                        {order.blockchain_tx_hash && (
+                          <a
+                            href="#"
+                            className="flex items-center text-xs text-blue-500 hover:text-blue-700 self-center"
+                          >
+                            <ExternalLink size={12} className="mr-1" /> View on
+                            Etherscan (Sim)
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {paginatedOrders.length === 0 && (
+                <div className="text-center py-10 text-slate-400">
+                  {orders.length === 0
+                    ? 'No orders found.'
+                    : 'No orders on this page.'}
                 </div>
-              </div>
-            </div>
+              )}
+              {totalPages > 1 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                  itemsPerPage={ITEMS_PER_PAGE}
+                  totalItems={orders.length}
+                />
+              )}
+            </>
           );
-        })}
-        {orders.length === 0 && (
-          <div className="text-center py-10 text-slate-400">
-            No orders found.
-          </div>
-        )}
+        })()}
       </div>
     </div>
   );

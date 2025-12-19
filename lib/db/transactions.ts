@@ -6,6 +6,7 @@ import { Shipment } from '@/types/shipment';
 import { User } from '@/types/user';
 import { Item } from '@/types/item';
 import { recordEventOnChain } from '@/lib/blockchain';
+import { recordBlockchainProof } from '@/lib/db/blockchain-proofs';
 import crypto from 'crypto'; // Node.js built-in cryptography module
 import { Hex } from 'viem';
 
@@ -25,12 +26,14 @@ interface OrderCreationResult {
  */
 export async function createOrderTransaction(
   buyer: User,
-  item: Item
+  item: Item,
+  quantity: number = 1
 ): Promise<OrderCreationResult> {
   // ✅ normalize numeric values from DB (pg NUMERIC often returns string)
   const buyerBalance = Number(buyer.wallet_balance);
   const itemPrice = Number(item.price);
   const itemStock = Number(item.stock);
+  const orderQuantity = Number(quantity) || 1;
 
   if (
     Number.isNaN(buyerBalance) ||
@@ -41,7 +44,13 @@ export async function createOrderTransaction(
   }
 
   // Server-side validation
-  if (buyerBalance < itemPrice || itemStock <= 0) {
+  if (orderQuantity <= 0) {
+    throw new Error('Quantity must be at least 1.');
+  }
+
+  const totalAmount = itemPrice * orderQuantity;
+
+  if (buyerBalance < totalAmount || itemStock < orderQuantity) {
     throw new Error(
       'Pre-transaction validation failed: Insufficient funds or stock.'
     );
@@ -54,13 +63,16 @@ export async function createOrderTransaction(
   const newOrder: Order = {
     order_id: orderId,
     buyer_id: buyer.id,
+    buyer_wallet_address: buyer.wallet_address,
     item_id: item.id,
-    quantity: 1,
-    total_amount: itemPrice,
-    current_status: OrderStatus.PENDING,
+    quantity: orderQuantity,
+    total_amount: totalAmount,
+    order_status: OrderStatus.PENDING,
     order_timestamp: currentTimestamp,
     blockchain_tx_hash: undefined,
-    payment_collected: false, // Add payment_collected property
+    payment_collected: false,
+    created_at: currentTimestamp,
+    updated_at: currentTimestamp,
   };
 
   // --- FETCH LOGISTICS PROVIDER ---
@@ -81,9 +93,11 @@ export async function createOrderTransaction(
     shipment_id: shipmentId,
     order_id: orderId,
     logistics_id: logisticsId,
-    current_location: 'Awaiting Seller Acceptance',
+    current_status: 'Awaiting Seller Acceptance',
     last_update: currentTimestamp,
     estimated_arrival: 'Pending',
+    created_at: currentTimestamp,
+    updated_at: currentTimestamp,
   };
 
   // --- 1. GENERATE DATA HASH ---
@@ -92,6 +106,9 @@ export async function createOrderTransaction(
     id: orderId,
     amount: newOrder.total_amount,
     buyer: newOrder.buyer_id,
+    buyerWallet: newOrder.buyer_wallet_address,
+    item: newOrder.item_id,
+    quantity: newOrder.quantity,
   });
   const dataHash = `0x${crypto
     .createHash('sha256')
@@ -101,8 +118,34 @@ export async function createOrderTransaction(
   // --- 2. RECORD ON BLOCKCHAIN ---
   let txHash: Hex;
   try {
-    txHash = await recordEventOnChain(orderId, EVENT_ORDER_CREATED, dataHash);
-    console.log(`[BC] Order recorded with TX: ${txHash}`);
+    // Pass buyer's wallet address to record transaction with user identity
+    txHash = await recordEventOnChain(
+      orderId,
+      EVENT_ORDER_CREATED,
+      dataHash,
+      buyer.wallet_address
+    );
+    console.log(
+      `[BC] Order recorded with TX: ${txHash} from buyer wallet: ${buyer.wallet_address}`
+    );
+
+    // --- 2B. STORE PROOF IN DATABASE ---
+    await recordBlockchainProof(
+      orderId,
+      'ORDER',
+      EVENT_ORDER_CREATED,
+      dataHash,
+      txHash,
+      buyer.wallet_address,
+      {
+        buyer_id: buyer.id,
+        item_id: item.id,
+        amount: newOrder.total_amount,
+        quantity: orderQuantity,
+        seller_id: item.seller_id,
+      }
+    );
+    console.log(`[DB] Proof recorded for order ${orderId}`);
   } catch (e) {
     console.error('Blockchain transaction failed during order creation:', e);
     throw new Error('Blockchain record failed. Aborting transaction.');
@@ -117,7 +160,7 @@ export async function createOrderTransaction(
     // A. Deduct buyer balance (Transfer to 'Escrow' - not explicitly modeled here, just deduction)
     const deduct = await query(
       'UPDATE users SET wallet_balance = wallet_balance - $1 WHERE id = $2 AND wallet_balance >= $1',
-      [itemPrice, buyer.id]
+      [totalAmount, buyer.id]
     );
 
     if (deduct.rowCount === 0) {
@@ -125,18 +168,22 @@ export async function createOrderTransaction(
     }
 
     // B. Deduct item stock
-    await query('UPDATE items SET stock = stock - 1 WHERE id = $1', [item.id]);
+    await query('UPDATE items SET stock = stock - $1 WHERE id = $2', [
+      orderQuantity,
+      item.id,
+    ]);
 
     // C. Insert new order, including the blockchain hash
     await query(
-      'INSERT INTO orders (order_id, buyer_id, item_id, quantity, total_amount, current_status, blockchain_tx_hash, payment_collected) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      'INSERT INTO orders (order_id, buyer_id, buyer_wallet_address, item_id, quantity, total_amount, order_status, blockchain_tx_hash, payment_collected, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())',
       [
         newOrder.order_id,
         newOrder.buyer_id,
+        newOrder.buyer_wallet_address,
         newOrder.item_id,
         newOrder.quantity,
         newOrder.total_amount,
-        newOrder.current_status,
+        newOrder.order_status,
         txHash,
         newOrder.payment_collected,
       ]
@@ -144,12 +191,12 @@ export async function createOrderTransaction(
 
     // D. Insert new shipment
     await query(
-      'INSERT INTO shipments (shipment_id, order_id, logistics_id, current_location, last_update, estimated_arrival) VALUES ($1, $2, $3, $4, NOW(), $5)',
+      'INSERT INTO shipments (shipment_id, order_id, logistics_id, current_status, last_update, estimated_arrival, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), $5, NOW(), NOW())',
       [
         newShipment.shipment_id,
         newShipment.order_id,
         newShipment.logistics_id,
-        newShipment.current_location,
+        newShipment.current_status,
         newShipment.estimated_arrival,
       ]
     );

@@ -13,7 +13,8 @@ const EVENT_USER_IDENTITY_HASHED = 5;
 const SALT_ROUNDS = 10;
 
 // --- Helper function to select non-sensitive fields ---
-const USER_FIELDS = 'id, name, email, role, address, wallet_balance';
+const USER_FIELDS =
+  'id, role, name, email, wallet_address, wallet_balance, contact_number, address, created_at, updated_at';
 
 // --- Login Handler ---
 export async function login(
@@ -42,7 +43,16 @@ export async function login(
 
 // --- Registration Handler ---
 export async function registerUser(user: User): Promise<User> {
-  const { name, email, password, role, address, wallet_balance, id } = user;
+  const {
+    id,
+    role,
+    name,
+    email,
+    password,
+    wallet_address,
+    address,
+    contact_number,
+  } = user;
 
   const existing = await query('SELECT email FROM users WHERE email = $1', [
     email,
@@ -50,18 +60,28 @@ export async function registerUser(user: User): Promise<User> {
   if (existing.rows.length > 0)
     throw new Error('User with this email already exists.');
 
+  // Check if wallet address is already used
+  const existingWallet = await query(
+    'SELECT wallet_address FROM users WHERE wallet_address = $1',
+    [wallet_address]
+  );
+  if (existingWallet.rows.length > 0)
+    throw new Error('Wallet address already registered.');
+
   const passwordHash = await bcrypt.hash(password!, SALT_ROUNDS);
 
   const text =
-    'INSERT INTO users (id, name, email, role, address, wallet_balance, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *';
+    'INSERT INTO users (id, role, name, email, password_hash, wallet_address, wallet_balance, contact_number, address, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()) RETURNING *';
   const values = [
     id,
+    role,
     name,
     email,
-    role,
-    address,
-    wallet_balance || 0,
     passwordHash,
+    wallet_address,
+    0, // Initial wallet balance
+    contact_number || null,
+    address || null,
   ];
 
   try {
@@ -73,6 +93,7 @@ export async function registerUser(user: User): Promise<User> {
       const identityPayload = {
         userId: newUser.id,
         role: newUser.role,
+        walletAddress: newUser.wallet_address,
       };
 
       const hashHex = crypto
@@ -85,7 +106,8 @@ export async function registerUser(user: User): Promise<User> {
       await recordEventOnChain(
         newUser.id,
         EVENT_USER_IDENTITY_HASHED,
-        dataHash
+        dataHash,
+        newUser.wallet_address
       );
     } catch (e) {
       console.error('[BC] Failed to record USER_IDENTITY_HASHED:', e);
@@ -105,6 +127,7 @@ export async function registerUser(user: User): Promise<User> {
 /**
  * Fully implemented function to update only non-sensitive profile fields.
  * This is used for the "Edit Profile" functionality.
+ * Note: wallet_address and role cannot be modified after creation.
  */
 export async function updateUser(user: Partial<User>): Promise<User | null> {
   if (!user.id) return null;
@@ -118,18 +141,37 @@ export async function updateUser(user: Partial<User>): Promise<User | null> {
     fields.push(`name = $${index++}`);
     values.push(user.name);
   }
-  // 2. Check for Address update
+  // 2. Check for Email update
+  if (user.email !== undefined) {
+    fields.push(`email = $${index++}`);
+    values.push(user.email);
+  }
+  // 3. Check for Contact Number update
+  if (user.contact_number !== undefined) {
+    fields.push(`contact_number = $${index++}`);
+    values.push(user.contact_number);
+  }
+  // 4. Check for Address update
   if (user.address !== undefined) {
     fields.push(`address = $${index++}`);
     values.push(user.address);
   }
   // NOTE: wallet_balance update is handled by the dedicated transaction logic.
+  // NOTE: wallet_address and role are immutable after creation
 
   if (fields.length === 0) {
     // If nothing changed, just fetch the existing user
-    return (
-      await query(`SELECT ${USER_FIELDS} FROM users WHERE id = $1`, [user.id])
-    ).rows[0] as User;
+    const result = await query(
+      `SELECT ${USER_FIELDS} FROM users WHERE id = $1`,
+      [user.id]
+    );
+    if (result.rows.length === 0) return null;
+
+    const fetchedUser = result.rows[0];
+    return {
+      ...fetchedUser,
+      wallet_balance: Number(fetchedUser.wallet_balance),
+    } as User;
   }
 
   const text = `UPDATE users SET ${fields.join(
@@ -139,7 +181,13 @@ export async function updateUser(user: Partial<User>): Promise<User | null> {
 
   try {
     const result: QueryResult = await query(text, values);
-    return result.rows.length > 0 ? (result.rows[0] as User) : null;
+    if (result.rows.length === 0) return null;
+
+    const updatedUser = result.rows[0];
+    return {
+      ...updatedUser,
+      wallet_balance: Number(updatedUser.wallet_balance),
+    } as User;
   } catch (error) {
     console.error('Database query error (updateUser):', error);
     return null;
@@ -151,7 +199,13 @@ export async function getUserByEmail(email: string): Promise<User | null> {
   const text = `SELECT ${USER_FIELDS} FROM users WHERE email = $1`;
   try {
     const result: QueryResult = await query(text, [email]);
-    return result.rows.length > 0 ? (result.rows[0] as User) : null;
+    if (result.rows.length === 0) return null;
+
+    const user = result.rows[0];
+    return {
+      ...user,
+      wallet_balance: Number(user.wallet_balance),
+    } as User;
   } catch (error) {
     console.error('Database query error (getUserByEmail):', error);
     return null;
@@ -162,7 +216,13 @@ export async function getUserById(id: string): Promise<User | null> {
   const text = `SELECT ${USER_FIELDS} FROM users WHERE id = $1`;
   try {
     const result: QueryResult = await query(text, [id]);
-    return result.rows.length > 0 ? (result.rows[0] as User) : null;
+    if (result.rows.length === 0) return null;
+
+    const user = result.rows[0];
+    return {
+      ...user,
+      wallet_balance: Number(user.wallet_balance),
+    } as User;
   } catch (error) {
     console.error('Database query error (getUserById):', error);
     return null;

@@ -12,13 +12,18 @@ export enum OrderStatus {
 }
 
 export interface Order {
-  order_id: string; // PK order_id
-  buyer_id: string; // FK buyer_id
-  item_id: string; // FK item_id
+  order_id: string; // Primary key
+  buyer_id: string; // Foreign key to users
+  buyer_wallet_address: string; // Cached buyer wallet for blockchain proof
+  item_id: string; // Foreign key to items
   quantity: number;
   total_amount: number;
-  current_status: OrderStatus; // Stored off-chain
+  order_status: OrderStatus; // Stored off-chain
   blockchain_tx_hash?: string; // Stored off-chain, linked to on-chain proof
-  order_timestamp: string;
+  order_timestamp: string; // ISO timestamp
   payment_collected?: boolean; // Payment collection flag
+  created_at: string; // ISO timestamp
+  updated_at: string; // ISO timestamp
+  // Optional denormalized field from JOIN with items for display purposes
+  item_name?: string;
 }

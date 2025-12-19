@@ -4,7 +4,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { BlockchainRecord } from '@/types/blockchain'; // Assuming this type is defined in your /types directory
-import { ShieldCheck, Clock, FileKey, Link } from 'lucide-react';
+import {
+  ShieldCheck,
+  Clock,
+  FileKey,
+  Link,
+  ChevronUp,
+  ChevronDown,
+} from 'lucide-react';
 
 /**
  * Fetches the blockchain ledger data from the Next.js API route.
@@ -21,6 +28,7 @@ const fetchLedger = async (): Promise<BlockchainRecord[]> => {
 
 export const BlockchainViewer: React.FC = () => {
   const [ledger, setLedger] = useState<BlockchainRecord[]>([]);
+  const [containerHeight, setContainerHeight] = useState(256); // h-64 = 16rem = 256px
 
   useEffect(() => {
     // Function to handle fetching and setting the ledger
@@ -46,6 +54,11 @@ export const BlockchainViewer: React.FC = () => {
     return () => clearInterval(interval);
   }, []); // Empty dependency array means this runs once on mount
 
+  const increaseHeight = () =>
+    setContainerHeight((prev) => Math.min(prev + 100, 800));
+  const decreaseHeight = () =>
+    setContainerHeight((prev) => Math.max(prev - 100, 200));
+
   // JSX Content (The UI of the component)
   return (
     <div className="bg-slate-900 text-slate-300 rounded-xl overflow-hidden shadow-2xl border border-slate-700 mt-8">
@@ -56,13 +69,37 @@ export const BlockchainViewer: React.FC = () => {
             Hardhat Local Node - Event Stream
           </h3>
         </div>
-        <div className="flex items-center space-x-2 text-xs font-mono">
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-          <span>Live</span>
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={decreaseHeight}
+              className="p-1.5 hover:bg-slate-700 rounded transition-colors text-slate-400 hover:text-slate-200"
+              title="Decrease height"
+            >
+              <ChevronUp size={16} />
+            </button>
+            <span className="text-xs font-mono text-slate-400 w-12 text-center">
+              {containerHeight}px
+            </span>
+            <button
+              onClick={increaseHeight}
+              className="p-1.5 hover:bg-slate-700 rounded transition-colors text-slate-400 hover:text-slate-200"
+              title="Increase height"
+            >
+              <ChevronDown size={16} />
+            </button>
+          </div>
+          <div className="flex items-center space-x-2 text-xs font-mono">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+            <span>Live</span>
+          </div>
         </div>
       </div>
 
-      <div className="h-64 overflow-y-auto p-4 space-y-3 font-mono text-sm bg-black/20">
+      <div
+        className="overflow-y-auto p-4 space-y-3 font-mono text-sm bg-black/20 transition-all duration-200"
+        style={{ height: `${containerHeight}px` }}
+      >
         {ledger.length === 0 ? (
           <div className="text-center py-10 text-slate-500">
             No transactions recorded on chain yet.

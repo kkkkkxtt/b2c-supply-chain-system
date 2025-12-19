@@ -21,6 +21,17 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [quantity, setQuantity] = useState<number>(1);
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [invoiceData, setInvoiceData] = useState<{
+    orderId: string;
+    txHash: string;
+    itemName: string;
+    unitPrice: number;
+    quantity: number;
+    total: number;
+  } | null>(null);
 
   useEffect(() => {
     loadItems();
@@ -46,8 +57,44 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     setLoading(false);
   };
 
-  // REFACTORED: Handle Buy uses the new order API route
-  const handleBuy = async (item: Item) => {
+  const openPurchaseModal = (item: Item) => {
+    setSelectedItem(item);
+    setQuantity(1);
+    setInvoiceData(null);
+    setShowInvoice(false);
+  };
+
+  const closePurchaseModal = () => {
+    setSelectedItem(null);
+    setQuantity(1);
+    setShowInvoice(false);
+    setInvoiceData(null);
+    setPurchasing(null);
+  };
+
+  // REFACTORED: Handle Buy uses the new order API route with quantity and shows invoice
+  const handleBuy = async () => {
+    if (!selectedItem) return;
+
+    const item = selectedItem;
+
+    if (quantity <= 0) {
+      alert('Quantity must be at least 1.');
+      return;
+    }
+
+    const totalCost = item.price * quantity;
+
+    if (user.wallet_balance < totalCost) {
+      alert('Insufficient wallet balance for the selected quantity!');
+      return;
+    }
+
+    if (item.stock < quantity) {
+      alert('Requested quantity exceeds available stock.');
+      return;
+    }
+
     if (user.wallet_balance < item.price) {
       alert('Insufficient wallet balance!');
       return;
@@ -60,7 +107,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       const response = await fetch('/api/order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ buyer: user, item: item }),
+        body: JSON.stringify({ buyer: user, item, quantity }),
       });
 
       const result = await response.json();
@@ -69,7 +116,17 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         // 4. Update UI state
         refreshUser(); // Updates the user's wallet balance display
         loadItems(); // Updates the item stock display
-        alert(`Order Placed! Blockchain TX: ${result.txHash}`);
+
+        // Show invoice instead of simple alert
+        setInvoiceData({
+          orderId: result.orderId,
+          txHash: result.txHash,
+          itemName: result.item?.item_name ?? item.item_name,
+          unitPrice: item.price,
+          quantity,
+          total: item.price * quantity,
+        });
+        setShowInvoice(true);
       } else {
         // Handle server-side validation errors (e.g., stock ran out just before purchase)
         alert(`Transaction Failed: ${result.error}`);
@@ -108,6 +165,146 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         </div>
       </div>
 
+      {/* Purchase Quantity & Invoice Modal */}
+      {selectedItem && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-6 relative">
+            <h3 className="text-xl font-bold text-slate-900 mb-4 text-center">
+              Purchase `{selectedItem.item_name}`
+            </h3>
+
+            {!showInvoice && (
+              <>
+                <div className="space-y-3 mb-4">
+                  <div className="flex justify-between text-sm text-slate-600">
+                    <span>Unit Price</span>
+                    <span className="font-semibold text-slate-900">
+                      ${selectedItem.price}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm text-slate-600">
+                    <span>Available Stock</span>
+                    <span className="font-semibold text-slate-900">
+                      {selectedItem.stock}
+                    </span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
+                      Quantity
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={selectedItem.stock}
+                      value={quantity}
+                      onChange={(e) =>
+                        setQuantity(
+                          Math.max(
+                            1,
+                            Math.min(
+                              selectedItem.stock,
+                              Number(e.target.value) || 1
+                            )
+                          )
+                        )
+                      }
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold text-slate-900">
+                    <span>Total</span>
+                    <span>${(selectedItem.price * quantity).toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 mt-4">
+                  <button
+                    onClick={closePurchaseModal}
+                    className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBuy}
+                    disabled={!!purchasing}
+                    className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center justify-center gap-2"
+                  >
+                    {purchasing === selectedItem.id ? (
+                      <Loader2 className="animate-spin" size={16} />
+                    ) : (
+                      <>
+                        <ShoppingBag size={16} />
+                        <span>Confirm Purchase</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {showInvoice && invoiceData && (
+              <>
+                <div className="border border-slate-200 rounded-lg p-4 text-sm mb-4 bg-slate-50">
+                  <h4 className="font-semibold text-slate-900 mb-2">
+                    Purchase Invoice
+                  </h4>
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Item</span>
+                      <span className="font-medium">
+                        {invoiceData.itemName}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Quantity</span>
+                      <span className="font-medium">
+                        {invoiceData.quantity}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Unit Price</span>
+                      <span className="font-medium">
+                        ${invoiceData.unitPrice}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Total</span>
+                      <span className="font-semibold text-blue-600">
+                        ${invoiceData.total.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="mt-2">
+                      <span className="block text-slate-500 text-xs">
+                        Order ID
+                      </span>
+                      <span className="text-[11px] font-mono">
+                        {invoiceData.orderId}
+                      </span>
+                    </div>
+                    <div className="mt-2">
+                      <span className="block text-slate-500 text-xs">
+                        Blockchain TX
+                      </span>
+                      <span className="text-[11px] font-mono break-all text-blue-600">
+                        {invoiceData.txHash}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end mt-4">
+                  <button
+                    onClick={closePurchaseModal}
+                    className="px-4 py-2 text-sm rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {items.map((item) => {
           const isOutOfStock = item.stock <= 0;
@@ -118,14 +315,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               key={item.id}
               className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow group"
             >
-              <div className="h-48 bg-slate-200 relative">
-                <img
-                  src={item.image_url}
-                  alt={item.item_name}
-                  className={`w-full h-full object-cover ${
-                    isOutOfStock ? 'grayscale opacity-75' : ''
-                  }`}
-                />
+              <div className="h-32 bg-gradient-to-br from-blue-50 to-indigo-50 border-b border-slate-200 flex items-center justify-center relative">
+                <div className="text-center">
+                  <ShoppingBag
+                    className="text-blue-400 mx-auto mb-2"
+                    size={40}
+                  />
+                  <p className="text-xs font-medium text-slate-500">Product</p>
+                </div>
                 <div
                   className={`absolute top-2 right-2 px-2 py-1 rounded text-xs font-bold ${
                     isOutOfStock
@@ -157,7 +354,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 )}
 
                 <button
-                  onClick={() => handleBuy(item)}
+                  onClick={() => openPurchaseModal(item)}
                   disabled={!!purchasing || isOutOfStock || !canAfford}
                   className={`w-full font-medium py-2 rounded-lg transition-colors flex items-center justify-center space-x-2 
                     ${

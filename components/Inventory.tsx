@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { Item } from '@/types/item';
 import { User } from '@/types/user';
+import { Pagination } from '@/components/Pagination';
 import { Plus, Loader2, Edit, Save, X } from 'lucide-react';
 
 interface InventoryProps {
@@ -14,6 +15,8 @@ export const Inventory: React.FC<InventoryProps> = ({ user }) => {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 5;
 
   // For Create
   const [newItem, setNewItem] = useState({
@@ -70,7 +73,6 @@ export const Inventory: React.FC<InventoryProps> = ({ user }) => {
       description: newItem.desc,
       price: Number(newItem.price),
       stock: Number(newItem.stock),
-      image_url: `https://picsum.photos/400/300?random=${Date.now()}`,
     };
 
     const response = await fetch('/api/inventory', {
@@ -228,124 +230,151 @@ export const Inventory: React.FC<InventoryProps> = ({ user }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {items.map((item) => (
-              <tr key={item.id} className="hover:bg-slate-50">
-                <td className="p-4">
-                  {editingItemId === item.id ? (
-                    <div className="space-y-2">
-                      <input
-                        className="border p-1 rounded w-full"
-                        value={editItemData.item_name ?? ''}
-                        onChange={(e) =>
-                          setEditItemData({
-                            ...editItemData,
-                            item_name: e.target.value,
-                          })
-                        }
-                      />
-                      <textarea
-                        className="border p-1 rounded w-full text-xs"
-                        value={editItemData.description ?? ''}
-                        onChange={(e) =>
-                          setEditItemData({
-                            ...editItemData,
-                            description: e.target.value,
-                          })
-                        }
-                      />
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="font-medium text-slate-900">
-                        {item.item_name}
-                      </div>
-                      <div className="text-slate-500 text-xs truncate max-w-xs">
-                        {item.description}
-                      </div>
-                    </div>
-                  )}
-                </td>
-                <td className="p-4">
-                  {editingItemId === item.id ? (
-                    <input
-                      type="number"
-                      className="border p-1 rounded w-20"
-                      value={String(editItemData.price ?? '')}
-                      onChange={(e) =>
-                        setEditItemData({
-                          ...editItemData,
-                          price: Number(e.target.value),
-                        })
-                      }
-                    />
-                  ) : (
-                    <span>${item.price}</span>
-                  )}
-                </td>
-                <td className="p-4">
-                  {editingItemId === item.id ? (
-                    <input
-                      type="number"
-                      className="border p-1 rounded w-20"
-                      value={String(editItemData.stock ?? '')}
-                      onChange={(e) =>
-                        setEditItemData({
-                          ...editItemData,
-                          stock: Number(e.target.value),
-                        })
-                      }
-                    />
-                  ) : (
-                    <span
-                      className={
-                        item.stock === 0 ? 'text-red-500 font-bold' : ''
-                      }
-                    >
-                      {item.stock} units
-                    </span>
-                  )}
-                </td>
+            {(() => {
+              const totalPages = Math.ceil(items.length / ITEMS_PER_PAGE);
+              const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+              const endIndex = startIndex + ITEMS_PER_PAGE;
+              const paginatedItems = items.slice(startIndex, endIndex);
 
-                <td className="p-4 text-slate-500">
-                  {new Date(item.created_at).toLocaleDateString()}
-                </td>
+              return (
+                <>
+                  {paginatedItems.map((item) => (
+                    <tr key={item.id} className="hover:bg-slate-50">
+                      <td className="p-4">
+                        {editingItemId === item.id ? (
+                          <div className="space-y-2">
+                            <input
+                              className="border p-1 rounded w-full"
+                              value={editItemData.item_name ?? ''}
+                              onChange={(e) =>
+                                setEditItemData({
+                                  ...editItemData,
+                                  item_name: e.target.value,
+                                })
+                              }
+                            />
+                            <textarea
+                              className="border p-1 rounded w-full text-xs"
+                              value={editItemData.description ?? ''}
+                              onChange={(e) =>
+                                setEditItemData({
+                                  ...editItemData,
+                                  description: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="font-medium text-slate-900">
+                              {item.item_name}
+                            </div>
+                            <div className="text-slate-500 text-xs truncate max-w-xs">
+                              {item.description}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        {editingItemId === item.id ? (
+                          <input
+                            type="number"
+                            className="border p-1 rounded w-20"
+                            value={String(editItemData.price ?? '')}
+                            onChange={(e) =>
+                              setEditItemData({
+                                ...editItemData,
+                                price: Number(e.target.value),
+                              })
+                            }
+                          />
+                        ) : (
+                          <span>${item.price}</span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        {editingItemId === item.id ? (
+                          <input
+                            type="number"
+                            className="border p-1 rounded w-20"
+                            value={String(editItemData.stock ?? '')}
+                            onChange={(e) =>
+                              setEditItemData({
+                                ...editItemData,
+                                stock: Number(e.target.value),
+                              })
+                            }
+                          />
+                        ) : (
+                          <span
+                            className={
+                              item.stock === 0 ? 'text-red-500 font-bold' : ''
+                            }
+                          >
+                            {item.stock} units
+                          </span>
+                        )}
+                      </td>
 
-                <td className="p-4">
-                  {editingItemId === item.id ? (
-                    <div className="flex space-x-1">
-                      <button
-                        onClick={handleUpdateSubmit}
-                        className="p-1.5 bg-green-100 text-green-600 rounded hover:bg-green-200"
+                      <td className="p-4 text-slate-500">
+                        {new Date(item.created_at).toLocaleDateString()}
+                      </td>
+
+                      <td className="p-4">
+                        {editingItemId === item.id ? (
+                          <div className="flex space-x-1">
+                            <button
+                              onClick={handleUpdateSubmit}
+                              className="p-1.5 bg-green-100 text-green-600 rounded hover:bg-green-200"
+                            >
+                              <Save size={16} />
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => startEdit(item)}
+                            className="p-2 hover:bg-blue-50 text-blue-600 rounded transition-colors"
+                          >
+                            <Edit size={16} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {paginatedItems.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="p-8 text-center text-slate-400"
                       >
-                        <Save size={16} />
-                      </button>
-                      <button
-                        onClick={cancelEdit}
-                        className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => startEdit(item)}
-                      className="p-2 hover:bg-blue-50 text-blue-600 rounded transition-colors"
-                    >
-                      <Edit size={16} />
-                    </button>
+                        {items.length === 0
+                          ? 'No items in inventory.'
+                          : 'No items on this page.'}
+                      </td>
+                    </tr>
                   )}
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={5} className="p-8 text-center text-slate-400">
-                  No items in inventory.
-                </td>
-              </tr>
-            )}
+                </>
+              );
+            })()}
           </tbody>
         </table>
+        {Math.ceil(items.length / ITEMS_PER_PAGE) > 1 && (
+          <div className="px-4 py-4 bg-slate-50 border-t border-slate-200">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={Math.ceil(items.length / ITEMS_PER_PAGE)}
+              onPageChange={setCurrentPage}
+              itemsPerPage={ITEMS_PER_PAGE}
+              totalItems={items.length}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

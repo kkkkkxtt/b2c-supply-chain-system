@@ -1,12 +1,13 @@
 // /types/item.ts
 
 export interface Item {
-  id: string; // Corresponds to PK item_id
-  seller_id: string; // Corresponds to FK seller_id
+  id: string; // Primary key
+  seller_id: string; // Foreign key to users
+  seller_wallet_address: string; // Cached seller wallet for blockchain proof
   item_name: string;
   description: string;
   price: number;
   stock: number;
-  image_url?: string;
-  created_at: string;
+  created_at: string; // ISO timestamp
+  updated_at: string; // ISO timestamp
 }

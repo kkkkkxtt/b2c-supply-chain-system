@@ -1,135 +1,122 @@
 # B2C Supply Chain System
 
-A blockchain-enabled supply chain tracking system where buyers, sellers, and logistics providers can interact transparently.
-Built with **Next.js 14**, **Hardhat (Ethereum/Solidity)**, and **PostgreSQL**.
+A blockchain-enabled supply chain tracking system where buyers, sellers, and logistics providers can interact transparently. Built with **Next.js 14**, **Hardhat (Ethereum/Solidity)**, and **PostgreSQL**.
 
----
+## 🎯 Overview
 
-## 🚀 Quick Start Guide
+This system provides a complete B2C (Business-to-Consumer) supply chain management platform with blockchain integration for transparency and auditability. Key features include:
 
-Follow these steps to get the project running on your local machine.
+- **User Management**: Role-based access (Buyer, Seller, Logistics Provider)
+- **Inventory Management**: Product listing and stock tracking
+- **Order Processing**: Complete order lifecycle management
+- **Shipment Tracking**: Real-time shipment status updates
+- **Blockchain Integration**: All critical events recorded on-chain
+- **Wallet System**: Integrated wallet balance management
+- **Profile Management**: Comprehensive user profiles with blockchain identity
 
-### 1. Prerequisites
-Ensure you have the following installed:
-- **Node.js** (v18 or later)
-- **Git**
-- **PostgreSQL** (v14 or later)
+## 🚀 Quick Start
 
-### 2. Clone the Repository
-```bash
-git clone https://github.com/your-username/b2c-supply-chain-system.git
-cd b2c-supply-chain-system
-```
-
-### 3. Install Dependencies
-```bash
-npm install
-```
-
----
-
-## 🛠️ Setup Database (PostgreSQL)
-
-You need a local PostgreSQL database running.
-
-1. **Start PostgreSQL Service**:
+1. **Clone the repository**
    ```bash
-   # MacOS (Homebrew)
-   brew services start postgresql@14
-   # OR just run the app if installed globally
+   git clone <repository-url>
+   cd b2c-supply-chain-system
    ```
 
-2. **Create the Database Application User**:
-   Run this command in your terminal to create a database and a dedicated user:
+2. **Install dependencies**
    ```bash
-   createdb supply_chain_db
-   createuser -s scm_user
-   ```
-   *Note: If you have different credentials, update them in `.env` later.*
-
-3. **Initialize the Schema**:
-   Run the provided setup script to create tables (users, orders, items, shipments):
-   ```bash
-   psql -d supply_chain_db -f scripts/setup_db.sql
+   npm install
    ```
 
-4. **Configure Environment Variables**:
-   Create a `.env` file in the root directory:
+3. **Set up database** (See [SETUP.md](./SETUP.md))
+   ```bash
+   psql -U postgres -f scripts/setup_db_complete.sql
+   ```
+
+4. **Configure environment**
    ```bash
    cp .env.example .env
-   # OR create it manually:
-   touch .env
-   ```
-   Add the following content to `.env`:
-   ```env
-   # Database Configuration
-   DB_USER=scm_user
-   DB_PASSWORD=123456
-   DB_HOST=localhost
-   DB_NAME=supply_chain_db
-   DB_PORT=5432
+   # Edit .env with your database and blockchain settings
    ```
 
----
-
-## ⛓️ Setup Blockchain (Hardhat Local Node)
-
-To simulate the blockchain locally, you need to run a dedicated node.
-
-1. **Open a New Terminal Window** (Terminal A) and run:
+5. **Start Hardhat node** (Terminal 1)
    ```bash
    npx hardhat node
    ```
-   *Keep this terminal open! This is your local blockchain running on `http://127.0.0.1:8545`.*
 
-2. **Deploy the Smart Contract**:
-   Open a **second terminal** (Terminal B) and run:
+6. **Deploy contract** (Terminal 2)
    ```bash
    npx hardhat run scripts/deploy.ts --network localhost
+   # Copy CONTRACT_ADDRESS to .env
    ```
 
-3. **IMPORTANT: Update Contract Address**:
-   After deployment, the terminal will show a message like:
-   > OrderTracker deployed to: 0x5FbDB2315678afec8c3562b921AA65B2eB42d14A
-
-   Copy this address and update the file **`lib/blockchain.ts`**:
-   ```typescript
-   // lib/blockchain.ts
-   const CONTRACT_ADDRESS: Address = getAddress('0x5FbDB2315678afec8c3562b921AA65B2eB42d14A');
+7. **Run application** (Terminal 3)
+   ```bash
+   npm run dev
    ```
 
----
+Visit [http://localhost:3000](http://localhost:3000) to access the application.
 
-## 🏃 Run the Application
+## 📚 Documentation
 
-Now that the Database and Blockchain are running, start the web app.
+- **[SETUP.md](./SETUP.md)** - Comprehensive setup guide
+- **[SYSTEM-FEATURE.md](./SYSTEM-FEATURE.md)** - All system features
+- **[API-GUIDE.md](./API-GUIDE.md)** - API usage and guidelines
+- **[USERROLE-FUNCTIONALITIES.md](./USERROLE-FUNCTIONALITIES.md)** - User roles and functionalities
+- **[COMMON-PROBLEMS-FIX.md](./COMMON-PROBLEMS-FIX.md)** - Common problems and solutions
+- **[SETUP-FOR-ONLINE.md](./SETUP-FOR-ONLINE.md)** - Online environment setup
+- **[OTHERS.md](./OTHERS.md)** - Additional information
 
-In your terminal (Terminal B):
-```bash
-npm run dev
-```
+## 🛠️ Tech Stack
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
+- **Backend**: Next.js API Routes, PostgreSQL
+- **Blockchain**: Hardhat, Solidity, viem
+- **Database**: PostgreSQL with comprehensive schema
+- **Authentication**: Session-based with bcrypt password hashing
 
----
+## 🏗️ Architecture
 
-## 🧪 Testing the Flow
+- **Database**: PostgreSQL with wallet address support and timestamp tracking
+- **Blockchain**: Hardhat local node for development, Sepolia testnet for production
+- **API**: RESTful API endpoints with role-based access control
+- **Frontend**: Server-side rendered with client-side interactivity
 
-1. **Sign Up a Buyer**: Create an account (e.g., "Buyer One").
-2. **Sign Up a Seller**: Create a second account (incognito window) with role "Seller".
-3. **Sign Up Logistics**: Create a third account with role "Logistics Provider".
-   * *Required for shipment updates to work!*
-4. **Create an Order**: As a Buyer, select an item and buy it.
-5. **Simulate Flow**:
-   - Seller logs in -> "Accept Order".
-   - Logistics logs in -> Update Location -> "Out for Delivery".
-   - Buyer logs in -> "Confirm Receipt".
+## 🔐 Security Features
 
-## 🐛 Troubleshooting
+- Password hashing with bcrypt
+- Wallet address immutability
+- Role-based access control
+- SQL injection prevention (parameterized queries)
+- Blockchain proof of integrity
 
-- **Error: `ECONNREFUSED 127.0.0.1:8545`**
-  - Your Hardhat node is not running. Run `npx hardhat node`.
-- **Error: `InvalidAddressError`**
-  - You probably restarted the Hardhat node but didn't update the `CONTRACT_ADDRESS` in `lib/blockchain.ts`. Redeploy and update it.
-- **Error: ForeignKey Violation (Logistics)**
-  - You forgot to create a user with the "Logistics Provider" role. The system needs at least one to assign shipments to.
+## 📊 Key Features
+
+- ✅ User registration with auto-generated wallet addresses
+- ✅ Product inventory management
+- ✅ Order placement with quantity selection
+- ✅ Purchase invoice display
+- ✅ Order status tracking
+- ✅ Shipment location updates
+- ✅ Payment collection
+- ✅ Blockchain event recording
+- ✅ User profile management
+- ✅ Wallet balance management
+
+## 🧪 Testing
+
+See [SETUP.md](./SETUP.md) for testing workflows and verification steps.
+
+## 📝 License
+
+[Your License Here]
+
+## 🤝 Contributing
+
+[Contributing Guidelines]
+
+## 📞 Support
+
+For issues and questions, refer to:
+- [COMMON-PROBLEMS-FIX.md](./COMMON-PROBLEMS-FIX.md) for troubleshooting
+- [API-GUIDE.md](./API-GUIDE.md) for API usage
+- [SETUP.md](./SETUP.md) for setup issues

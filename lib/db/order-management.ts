@@ -21,11 +21,13 @@ export async function getOrdersAndShipments(
   console.log(`[DB] Fetching orders for role: ${user.role}`);
 
   // Base SQL queries (simplified for demo based on mock data structure)
-  let orderText = 'SELECT * FROM orders ORDER BY order_timestamp DESC';
+  let orderText =
+    'SELECT o.*, i.item_name FROM orders o LEFT JOIN items i ON o.item_id = i.id ORDER BY o.order_timestamp DESC';
   const orderValues: string[] = [];
 
   if (user.role === UserRole.BUYER) {
-    orderText = 'SELECT * FROM orders WHERE buyer_id = $1 ORDER BY order_timestamp DESC';
+    orderText =
+      'SELECT o.*, i.item_name FROM orders o JOIN items i ON o.item_id = i.id WHERE o.buyer_id = $1 ORDER BY o.order_timestamp DESC';
     orderValues.push(user.id);
   }
   // Seller logic (assuming seller sees all orders for now, or you implement the JOIN later)
@@ -33,7 +35,9 @@ export async function getOrdersAndShipments(
   try {
     const orderResult = await query(orderText, orderValues);
     // Fetch all shipments, as the client handles filtering by order ID
-    const shipmentResult = await query('SELECT * FROM shipments ORDER BY last_update DESC');
+    const shipmentResult = await query(
+      'SELECT * FROM shipments ORDER BY last_update DESC'
+    );
 
     return {
       orders: orderResult.rows as Order[],
@@ -71,7 +75,22 @@ export async function updateOrderStatusTransaction(
   // --- 2. RECORD ON BLOCKCHAIN ---
   let txHash: Hex;
   try {
-    txHash = await recordEventOnChain(orderId, eventType, dataHash);
+    // Fetch user wallet address for transaction identity
+    const userResult = await query(
+      'SELECT wallet_address FROM users WHERE id = $1',
+      [userId]
+    );
+    const userWalletAddress = userResult.rows[0]?.wallet_address || undefined;
+
+    txHash = await recordEventOnChain(
+      orderId,
+      eventType,
+      dataHash,
+      userWalletAddress
+    );
+    console.log(
+      `[BC] Order status updated with TX: ${txHash} from user wallet: ${userWalletAddress}`
+    );
   } catch (e) {
     console.error('Blockchain record failed during status update:', e);
     throw new Error('Blockchain transaction failed. Status not updated.');
@@ -79,7 +98,7 @@ export async function updateOrderStatusTransaction(
 
   // --- 3. DATABASE UPDATE ---
   await query(
-    'UPDATE orders SET current_status = $1, blockchain_tx_hash = $2 WHERE order_id = $3',
+    'UPDATE orders SET order_status = $1, blockchain_tx_hash = $2 WHERE order_id = $3',
     [newStatus, txHash, orderId]
   );
 
@@ -94,7 +113,7 @@ export async function collectPaymentTransaction(
 ): Promise<Hex> {
   // --- 1. CHECK STATUS ---
   const orderResult = await query(
-    'SELECT total_amount, current_status, payment_collected FROM orders WHERE order_id = $1',
+    'SELECT total_amount, order_status, payment_collected FROM orders WHERE order_id = $1',
     [orderId]
   );
   const order = orderResult.rows[0];
@@ -103,8 +122,8 @@ export async function collectPaymentTransaction(
     throw new Error('Payment already collected or order not found.');
   }
   if (
-    order.current_status !== OrderStatus.DELIVERED &&
-    order.current_status !== OrderStatus.CONFIRMED
+    order.order_status !== OrderStatus.DELIVERED &&
+    order.order_status !== OrderStatus.CONFIRMED
   ) {
     throw new Error('Cannot collect payment: Order not delivered/confirmed.');
   }
@@ -123,10 +142,22 @@ export async function collectPaymentTransaction(
   // --- 3. RECORD ON BLOCKCHAIN ---
   let txHash: Hex;
   try {
+    // Fetch seller wallet address for transaction identity
+    const sellerResult = await query(
+      'SELECT wallet_address FROM users WHERE id = $1',
+      [sellerId]
+    );
+    const sellerWalletAddress =
+      sellerResult.rows[0]?.wallet_address || undefined;
+
     txHash = await recordEventOnChain(
       orderId,
       EVENT_PAYMENT_RELEASED,
-      dataHash
+      dataHash,
+      sellerWalletAddress
+    );
+    console.log(
+      `[BC] Payment released with TX: ${txHash} from seller wallet: ${sellerWalletAddress}`
     );
   } catch (e) {
     console.error('Blockchain record failed during payment release:', e);

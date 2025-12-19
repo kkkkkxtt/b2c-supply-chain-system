@@ -52,19 +52,19 @@ export async function createItem(item: Item): Promise<Item> {
   try {
     const sql = `
       INSERT INTO items (
-        id, seller_id, item_name, description, price, stock, image_url, created_at
+        id, seller_id, seller_wallet_address, item_name, description, price, stock, created_at, updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
       RETURNING *;
     `;
     const params = [
       item.id,
       item.seller_id,
+      item.seller_wallet_address,
       item.item_name,
       item.description,
       Number(item.price),
       Number(item.stock),
-      item.image_url,
     ];
 
     const result = await query(sql, params);
@@ -80,11 +80,11 @@ export async function createItem(item: Item): Promise<Item> {
       const itemPayload = {
         itemId: createdItem.id,
         sellerId: createdItem.seller_id,
+        sellerWallet: createdItem.seller_wallet_address,
         name: createdItem.item_name,
         description: createdItem.description,
         price: createdItem.price,
         stock: createdItem.stock,
-        imageUrl: createdItem.image_url,
         createdAt: createdItem.created_at,
       };
 
@@ -98,7 +98,8 @@ export async function createItem(item: Item): Promise<Item> {
       await recordEventOnChain(
         String(createdItem.id),
         EVENT_ITEM_METADATA_HASHED,
-        dataHash
+        dataHash,
+        createdItem.seller_wallet_address
       );
     } catch (e) {
       console.error('[BC] Failed to record ITEM_METADATA_HASHED:', e);
@@ -125,9 +126,9 @@ export async function updateItemBySeller(
         description = $2,
         price = $3,
         stock = $4,
-        image_url = $5
+        updated_at = NOW()
       WHERE
-        id = $6 AND seller_id = $7
+        id = $5 AND seller_id = $6
       RETURNING *;
     `;
 
@@ -136,7 +137,6 @@ export async function updateItemBySeller(
       item.description,
       Number(item.price),
       Number(item.stock),
-      item.image_url,
       item.id,
       sellerId,
     ];
@@ -166,9 +166,9 @@ export async function updateItem(item: Item): Promise<Item> {
         description = $2,
         price = $3,
         stock = $4,
-        image_url = $5
+        updated_at = NOW()
       WHERE
-        id = $6
+        id = $5
       RETURNING *;
     `;
     const params = [
@@ -176,7 +176,6 @@ export async function updateItem(item: Item): Promise<Item> {
       item.description,
       Number(item.price),
       Number(item.stock),
-      item.image_url,
       item.id,
     ];
 
