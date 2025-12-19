@@ -5,6 +5,7 @@ import { Order, OrderStatus } from '@/types/order';
 import { Shipment } from '@/types/shipment';
 import { User, UserRole } from '@/types/user';
 import { recordEventOnChain } from '@/lib/blockchain';
+import { recordBlockchainProof } from '@/lib/db/blockchain-proofs';
 import { Hex } from 'viem';
 import crypto from 'crypto';
 
@@ -91,6 +92,22 @@ export async function updateOrderStatusTransaction(
     console.log(
       `[BC] Order status updated with TX: ${txHash} from user wallet: ${userWalletAddress}`
     );
+
+    // Store proof in database for STATUS_UPDATE (including ACCEPTED) and DELIVERY_CONFIRMED
+    await recordBlockchainProof(
+      orderId,
+      'ORDER',
+      eventType,
+      dataHash,
+      txHash,
+      userWalletAddress || '',
+      {
+        orderId,
+        status: newStatus,
+        updater: userId,
+      }
+    );
+    console.log(`[DB] Order status proof recorded for ${orderId}, status: ${newStatus}`);
   } catch (e) {
     console.error('Blockchain record failed during status update:', e);
     throw new Error('Blockchain transaction failed. Status not updated.');
@@ -159,6 +176,22 @@ export async function collectPaymentTransaction(
     console.log(
       `[BC] Payment released with TX: ${txHash} from seller wallet: ${sellerWalletAddress}`
     );
+
+    // Store proof in database for PAYMENT_RELEASED
+    await recordBlockchainProof(
+      orderId,
+      'ORDER',
+      EVENT_PAYMENT_RELEASED,
+      dataHash,
+      txHash,
+      sellerWalletAddress || '',
+      {
+        orderId,
+        amount: order.total_amount,
+        seller: sellerId,
+      }
+    );
+    console.log(`[DB] Payment release proof recorded for ${orderId}`);
   } catch (e) {
     console.error('Blockchain record failed during payment release:', e);
     throw new Error('Blockchain transaction failed. Payment not released.');

@@ -5,6 +5,7 @@ import { User, UserRole } from '@/types/user';
 import bcrypt from 'bcrypt';
 import { QueryResult } from 'pg';
 import { recordEventOnChain } from '@/lib/blockchain';
+import { recordBlockchainProof } from '@/lib/db/blockchain-proofs';
 import { Hex } from 'viem';
 import crypto from 'crypto';
 
@@ -103,12 +104,28 @@ export async function registerUser(user: User): Promise<User> {
 
       const dataHash = `0x${hashHex}` as Hex;
 
-      await recordEventOnChain(
+      const txHash = await recordEventOnChain(
         newUser.id,
         EVENT_USER_IDENTITY_HASHED,
         dataHash,
         newUser.wallet_address
       );
+      
+      // Store proof in database
+      await recordBlockchainProof(
+        newUser.id,
+        'USER',
+        EVENT_USER_IDENTITY_HASHED,
+        dataHash,
+        txHash,
+        newUser.wallet_address,
+        {
+          userId: newUser.id,
+          role: newUser.role,
+          walletAddress: newUser.wallet_address,
+        }
+      );
+      console.log(`[DB] User identity proof recorded for ${newUser.id}`);
     } catch (e) {
       console.error('[BC] Failed to record USER_IDENTITY_HASHED:', e);
       // Option A (recommended): do NOT block registration if blockchain fails

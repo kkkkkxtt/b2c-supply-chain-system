@@ -54,16 +54,45 @@ export const BlockchainHashViewer: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedEventType, setSelectedEventType] = useState<number | null>(null);
 
   const PROOFS_PER_PAGE = 2;
 
   // Remove auto-load - only show results when user searches
   // Dashboard stays clean until search is performed
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setError(null);
     setCurrentPage(1);
+
+    // If event type is selected, search by event type
+    if (selectedEventType !== null) {
+      setLoading(true);
+      setSearched(true);
+      try {
+        console.log('[Viewer] Searching by event type:', selectedEventType);
+        const response = await fetch(
+          `/api/blockchain-proofs?eventType=${selectedEventType}&limit=200`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[Viewer] Event type search returned', data.length, 'results');
+          setProofs(data);
+        } else {
+          const errorData = await response.json();
+          setError(errorData.error || 'Search failed');
+          setProofs([]);
+        }
+      } catch (error) {
+        console.error('[Viewer] Event type search failed:', error);
+        setError(error instanceof Error ? error.message : 'Search failed');
+        setProofs([]);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     // Don't search if search term is empty
     if (!searchTerm.trim()) {
@@ -104,8 +133,19 @@ export const BlockchainHashViewer: React.FC = () => {
     setSearched(false);
     setProofs([]);
     setSearchTerm('');
+    setSelectedEventType(null);
     setCurrentPage(1);
     setError(null);
+  };
+
+  const handleEventTypeFilter = (eventType: number | null) => {
+    setSelectedEventType(eventType);
+    setSearchTerm(''); // Clear search term when filtering by event type
+    if (eventType !== null) {
+      handleSearch();
+    } else {
+      clearResults();
+    }
   };
 
   const handleCopyToClipboard = (text: string, fieldId: string) => {
@@ -137,6 +177,40 @@ export const BlockchainHashViewer: React.FC = () => {
         </p>
       </div>
 
+      {/* Event Type Filter Buttons */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <label className="block text-sm font-semibold text-slate-700 mb-3">
+          Filter by Event Type:
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => handleEventTypeFilter(null)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              selectedEventType === null
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            All Events
+          </button>
+          {Object.entries(EVENT_TYPE_MAP).map(([type, name]) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => handleEventTypeFilter(parseInt(type))}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                selectedEventType === parseInt(type)
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Search Form */}
       <form onSubmit={handleSearch} className="space-y-4">
         <div className="flex gap-2">
@@ -145,7 +219,10 @@ export const BlockchainHashViewer: React.FC = () => {
               type="text"
               placeholder="Search by TX hash, entity ID, wallet address, or data hash..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setSelectedEventType(null); // Clear event type filter when typing
+              }}
               className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
             <Search

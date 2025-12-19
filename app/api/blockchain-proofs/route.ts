@@ -7,6 +7,7 @@ import {
   getProofsByEntity,
   getProofsBySender,
   getRecentProofs,
+  getProofsByEventType,
 } from '@/lib/db/blockchain-proofs';
 
 /**
@@ -15,6 +16,7 @@ import {
  * Query params:
  * - search: Search term (searches tx_hash, entity_id, sender_address, data_hash)
  * - type: Get proofs of specific entity type (USER, ITEM, ORDER, SHIPMENT)
+ * - eventType: Get proofs of specific event type (0-5)
  * - sender: Get proofs from specific sender address
  * - txHash: Get specific proof by transaction hash
  * - entity: Get proofs for specific entity ID
@@ -27,6 +29,7 @@ export async function GET(req: NextRequest) {
     const txHash = searchParams.get('txHash');
     const entityId = searchParams.get('entity');
     const senderAddress = searchParams.get('sender');
+    const eventTypeParam = searchParams.get('eventType');
     const limitParam = searchParams.get('limit') || '50';
     const limit = Math.min(parseInt(limitParam), 200);
 
@@ -35,6 +38,7 @@ export async function GET(req: NextRequest) {
       txHash,
       entityId,
       senderAddress,
+      eventType: eventTypeParam,
       limit,
     });
 
@@ -45,6 +49,19 @@ export async function GET(req: NextRequest) {
       console.log('[API] Searching by TX hash:', txHash);
       const proof = await getProofByTxHash(txHash);
       results = proof ? [proof] : [];
+    }
+    // If searching by event type
+    else if (eventTypeParam) {
+      const eventType = parseInt(eventTypeParam);
+      if (!isNaN(eventType) && eventType >= 0 && eventType <= 5) {
+        console.log('[API] Searching by event type:', eventType);
+        results = await getProofsByEventType(eventType, limit);
+      } else {
+        return NextResponse.json(
+          { error: 'Invalid event type. Must be 0-5.' },
+          { status: 400 }
+        );
+      }
     }
     // If searching by sender address
     else if (senderAddress) {
