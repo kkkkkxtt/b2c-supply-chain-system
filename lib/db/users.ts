@@ -208,41 +208,11 @@ export async function updateUser(user: Partial<User>): Promise<User | null> {
     } as User;
 
     // Record profile update on blockchain
-    try {
-      const profileUpdatePayload = {
-        userId: finalUser.id,
-        role: finalUser.role,
-        walletAddress: finalUser.wallet_address,
-        name: finalUser.name,
-        email: finalUser.email,
-        contactNumber: finalUser.contact_number,
-        address: finalUser.address,
-        updatedAt: finalUser.updated_at,
-      };
-
-      const hashHex = crypto
-        .createHash('sha256')
-        .update(JSON.stringify(profileUpdatePayload))
-        .digest('hex');
-
-      const dataHash = `0x${hashHex}` as Hex;
-
-      const txHash = await recordEventOnChain(
-        finalUser.id,
-        EVENT_USER_PROFILE_UPDATED,
-        dataHash,
-        finalUser.wallet_address
-      );
-
-      // Store proof in database
-      await recordBlockchainProof(
-        finalUser.id,
-        'USER',
-        EVENT_USER_PROFILE_UPDATED,
-        dataHash,
-        txHash,
-        finalUser.wallet_address,
-        {
+    if (!finalUser.wallet_address) {
+      console.warn(`[DB] User ${finalUser.id} missing wallet_address, skipping blockchain proof`);
+    } else {
+      try {
+        const profileUpdatePayload = {
           userId: finalUser.id,
           role: finalUser.role,
           walletAddress: finalUser.wallet_address,
@@ -251,12 +221,58 @@ export async function updateUser(user: Partial<User>): Promise<User | null> {
           contactNumber: finalUser.contact_number,
           address: finalUser.address,
           updatedAt: finalUser.updated_at,
+        };
+
+        const hashHex = crypto
+          .createHash('sha256')
+          .update(JSON.stringify(profileUpdatePayload))
+          .digest('hex');
+
+        const dataHash = `0x${hashHex}` as Hex;
+
+        console.log(`[BC] Recording USER_PROFILE_UPDATED event for user ${finalUser.id}, event type: ${EVENT_USER_PROFILE_UPDATED}`);
+        
+        const txHash = await recordEventOnChain(
+          finalUser.id,
+          EVENT_USER_PROFILE_UPDATED,
+          dataHash,
+          finalUser.wallet_address
+        );
+
+        console.log(`[BC] USER_PROFILE_UPDATED recorded on chain, TX: ${txHash}`);
+
+        // Store proof in database
+        const proof = await recordBlockchainProof(
+          finalUser.id,
+          'USER',
+          EVENT_USER_PROFILE_UPDATED,
+          dataHash,
+          txHash,
+          finalUser.wallet_address,
+          {
+            userId: finalUser.id,
+            role: finalUser.role,
+            walletAddress: finalUser.wallet_address,
+            name: finalUser.name,
+            email: finalUser.email,
+            contactNumber: finalUser.contact_number,
+            address: finalUser.address,
+            updatedAt: finalUser.updated_at,
+          }
+        );
+        
+        if (proof) {
+          console.log(`[DB] User profile update proof recorded for ${finalUser.id}, proof ID: ${proof.id}`);
+        } else {
+          console.error(`[DB] Failed to store proof in database for user ${finalUser.id}`);
         }
-      );
-      console.log(`[DB] User profile update proof recorded for ${finalUser.id}`);
-    } catch (e) {
-      console.error('[BC] Failed to record USER_PROFILE_UPDATED:', e);
-      // Don't block update if blockchain fails
+      } catch (e) {
+        console.error('[BC] Failed to record USER_PROFILE_UPDATED:', e);
+        if (e instanceof Error) {
+          console.error('[BC] Error details:', e.message, e.stack);
+        }
+        // Don't block update if blockchain fails
+      }
     }
 
     return finalUser;

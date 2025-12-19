@@ -152,55 +152,102 @@ export async function updateItemBySeller(
     const updatedItem = normalizeItem(result.rows[0]);
 
     // Record item update on blockchain
-    try {
-      const updatePayload = {
-        itemId: updatedItem.id,
-        sellerId: updatedItem.seller_id,
-        sellerWallet: updatedItem.seller_wallet_address,
-        name: updatedItem.item_name,
-        description: updatedItem.description,
-        price: updatedItem.price,
-        stock: updatedItem.stock,
-        updatedAt: updatedItem.updated_at,
-      };
+    // Fetch seller wallet if missing from item
+    let sellerWallet = updatedItem.seller_wallet_address;
 
-      const hashHex = crypto
-        .createHash('sha256')
-        .update(JSON.stringify(updatePayload))
-        .digest('hex');
-
-      const dataHash = `0x${hashHex}` as Hex;
-
-      const txHash = await recordEventOnChain(
-        String(updatedItem.id),
-        EVENT_ITEM_UPDATED,
-        dataHash,
-        updatedItem.seller_wallet_address
+    if (!sellerWallet) {
+      console.log(
+        `[DB] Fetching seller wallet for item ${updatedItem.id}, seller ${sellerId}`
       );
+      try {
+        const userResult = await query(
+          'SELECT wallet_address FROM users WHERE id = $1',
+          [sellerId]
+        );
+        if (userResult.rows.length > 0) {
+          sellerWallet = userResult.rows[0].wallet_address;
+          console.log(`[DB] Found seller wallet: ${sellerWallet}`);
+        }
+      } catch (e) {
+        console.error(`[DB] Failed to fetch seller wallet for ${sellerId}:`, e);
+      }
+    }
 
-      // Store proof in database
-      await recordBlockchainProof(
-        updatedItem.id,
-        'ITEM',
-        EVENT_ITEM_UPDATED,
-        dataHash,
-        txHash,
-        updatedItem.seller_wallet_address,
-        {
+    // Record item update on blockchain
+    // Only record if seller_wallet_address exists
+    if (!sellerWallet) {
+      console.warn(
+        `[DB] Item ${updatedItem.id} missing seller_wallet_address, skipping blockchain proof`
+      );
+    } else {
+      try {
+        const updatePayload = {
           itemId: updatedItem.id,
           sellerId: updatedItem.seller_id,
-          sellerWallet: updatedItem.seller_wallet_address,
+          sellerWallet: sellerWallet,
           name: updatedItem.item_name,
           description: updatedItem.description,
           price: updatedItem.price,
           stock: updatedItem.stock,
           updatedAt: updatedItem.updated_at,
+        };
+
+        const hashHex = crypto
+          .createHash('sha256')
+          .update(JSON.stringify(updatePayload))
+          .digest('hex');
+
+        const dataHash = `0x${hashHex}` as Hex;
+
+        console.log(
+          `[BC] Recording ITEM_UPDATED event for item ${updatedItem.id}, event type: ${EVENT_ITEM_UPDATED}`
+        );
+
+        const txHash = await recordEventOnChain(
+          String(updatedItem.id),
+          EVENT_ITEM_UPDATED,
+          dataHash,
+          sellerWallet
+        );
+
+        console.log(`[BC] ITEM_UPDATED recorded on chain, TX: ${txHash}`);
+
+        // Store proof in database
+        const proof = await recordBlockchainProof(
+          updatedItem.id,
+          'ITEM',
+          EVENT_ITEM_UPDATED,
+          dataHash,
+          txHash,
+          sellerWallet,
+          {
+            itemId: updatedItem.id,
+            sellerId: updatedItem.seller_id,
+            sellerWallet: sellerWallet,
+            name: updatedItem.item_name,
+            description: updatedItem.description,
+            price: updatedItem.price,
+            stock: updatedItem.stock,
+            updatedAt: updatedItem.updated_at,
+          }
+        );
+
+        if (proof) {
+          console.log(
+            `[DB] Item update proof recorded for ${updatedItem.id}, proof ID: ${proof.id}`
+          );
+        } else {
+          console.error(
+            `[DB] Failed to store proof in database for item ${updatedItem.id}`
+          );
         }
-      );
-      console.log(`[DB] Item update proof recorded for ${updatedItem.id}`);
-    } catch (e) {
-      console.error('[BC] Failed to record ITEM_UPDATED:', e);
-      // Don't block update if blockchain fails
+      } catch (e) {
+        console.error('[BC] Failed to record ITEM_UPDATED:', e);
+        if (e instanceof Error) {
+          console.error('[BC] Error details:', e.message, e.stack);
+        }
+        // Don't block update if blockchain fails
+      }
     }
 
     return updatedItem;

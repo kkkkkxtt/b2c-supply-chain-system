@@ -197,6 +197,8 @@ export async function getBlockchainLedger(): Promise<BlockchainRecord[]> {
       4: 'ITEM_METADATA_HASHED',
       5: 'USER_IDENTITY_HASHED',
       6: 'ESCROW_STATE_CHANGED',
+      7: 'ITEM_UPDATED',
+      8: 'USER_PROFILE_UPDATED',
     } as const;
 
     const mappedLogs = logs.map((log): BlockchainRecord => {
