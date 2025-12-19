@@ -6,6 +6,8 @@ export type BlockchainEventType =
   | 'ITEM_METADATA_HASHED'
   | 'USER_IDENTITY_HASHED'
   | 'ESCROW_STATE_CHANGED'
+  | 'ITEM_UPDATED'
+  | 'USER_PROFILE_UPDATED'
   | 'UNKNOWN';
 
 export interface BlockchainRecord {
